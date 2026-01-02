@@ -180,8 +180,8 @@ impl Ingestor {
                     info!("Processed {} emails from archive", count);
                 }
 
-                // For testing, stop after 1000 emails
-                if count >= 100 {
+                // For testing, stop after 20,000 emails
+                if count >= 20000 {
                     break;
                 }
             } else {
