@@ -1,0 +1,37 @@
+# Sashiko Implementation TODO
+
+## Phase 1: Foundation
+- [ ] Initialize Rust workspace and project structure.
+- [ ] Set up `config` crate for environment/file-based configuration.
+- [ ] Implement NNTP Ingestor (polling `nntp.lore.kernel.org`).
+- [ ] Set up libSQL/Turso schema for mailing lists and patchsets.
+- [ ] Implement internal task queue (tokio channels).
+- [ ] Implement article state tracking (high-water mark).
+- [ ] Set up structured logging (`tracing`) and observability baseline.
+
+## Phase 2: Git Ops & Patch Processing
+- [ ] Implement Patch/Patchset parsing from raw emails.
+- [ ] Develop baseline detection logic (explicit and heuristic).
+- [ ] Set up sandboxed `git am` environment.
+- [ ] Implement Worktree Garbage Collector (pruning & disk limits).
+- [ ] Implement patchset assembly (handling multi-part messages).
+
+## Phase 3: AI Logic & Interaction Tracking
+- [ ] Implement model-agnostic AI provider abstraction.
+- [ ] Set up `ai_interactions` table and workflow engine for chain restoration.
+- [ ] Integrate with `review-prompts` repository logic.
+- [ ] Implement consensus/comparison logic for multiple LLM runs.
+
+## Phase 4: Web API & Frontend
+- [ ] Build Axum REST API for patches, reviews, and stats.
+- [ ] Implement RBAC (Role-Based Access Control) for API endpoints.
+- [ ] Implement minimalistic "kernel.org style" frontend (Raw HTML/JS/CSS).
+- [ ] Add UI for re-running reviews and manual baseline overrides.
+- [ ] Configure Nginx as static file server and reverse proxy.
+
+## Phase 5: Email Loop & Refinement
+- [ ] Implement outbound SMTP for review replies.
+- [ ] Implement inbound email processing (reply tracking).
+- [ ] Add in-memory LRU cache for recent articles.
+- [ ] Stress test system with 20k/day message volume simulation.
+- [ ] Final performance tuning and security hardening.
