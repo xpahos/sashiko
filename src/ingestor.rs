@@ -2,7 +2,7 @@ use crate::db::Database;
 use crate::events::Event;
 use crate::nntp::NntpClient;
 use crate::settings::{IngestionMode, Settings};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use std::process::Stdio;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -15,14 +15,21 @@ pub struct Ingestor {
     settings: Settings,
     db: Arc<Database>,
     sender: Sender<Event>,
+    n_last: Option<usize>,
 }
 
 impl Ingestor {
-    pub fn new(settings: Settings, db: Arc<Database>, sender: Sender<Event>) -> Self {
+    pub fn new(
+        settings: Settings,
+        db: Arc<Database>,
+        sender: Sender<Event>,
+        n_last: Option<usize>,
+    ) -> Self {
         Self {
             settings,
             db,
             sender,
+            n_last,
         }
     }
 
@@ -109,15 +116,20 @@ impl Ingestor {
 
         // 1. Get list of all object SHAs
         info!("Listing git objects...");
-        let output = Command::new("git")
+        let mut command = Command::new("git");
+        command
             .arg("-c")
             .arg("safe.bareRepository=all")
             .current_dir(&archive_settings.path)
             .arg("rev-list")
             .arg("--all")
-            .arg("--objects")
-            .output()
-            .await?;
+            .arg("--objects");
+
+        if let Some(n) = self.n_last {
+            command.arg(format!("--max-count={}", n));
+        }
+
+        let output = command.output().await?;
 
         if !output.status.success() {
             return Err(anyhow!(
@@ -158,7 +170,7 @@ impl Ingestor {
         let mut count = 0;
         let mut processed_blobs = 0;
 
-        // We process in a loop. To avoid deadlock, we could spawn a writer task, 
+        // We process in a loop. To avoid deadlock, we could spawn a writer task,
         // or just write one SHA, read result, write next... (synchronous sequential)
         // Sequential is safest and simplest here.
 
@@ -185,7 +197,7 @@ impl Ingestor {
             // Read content + newline
             let mut content = vec![0u8; size];
             reader.read_exact(&mut content).await?;
-            
+
             // Consume the trailing newline that --batch outputs
             let mut newline = [0u8; 1];
             reader.read_exact(&mut newline).await?;

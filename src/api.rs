@@ -41,7 +41,7 @@ pub async fn run_server(
 async fn list_patchsets(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<crate::db::PatchsetRow>>, StatusCode> {
-    match state.db.get_patchsets(50).await {
+    match state.db.get_patchsets(None).await {
         Ok(patchsets) => Ok(Json(patchsets)),
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }

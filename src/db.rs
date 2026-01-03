@@ -79,11 +79,22 @@ impl Database {
         Ok(())
     }
 
-    pub async fn get_patchsets(&self, limit: i32) -> Result<Vec<PatchsetRow>> {
-        let mut rows = self.conn.query(
-            "SELECT id, message_id, subject, author, date, status FROM patchsets ORDER BY date DESC LIMIT ?",
-            libsql::params![limit],
-        ).await?;
+    pub async fn get_patchsets(&self, limit: Option<i32>) -> Result<Vec<PatchsetRow>> {
+        let mut rows = if let Some(l) = limit {
+            self.conn
+                .query(
+                    "SELECT id, message_id, subject, author, date, status FROM patchsets ORDER BY date DESC LIMIT ?",
+                    libsql::params![l],
+                )
+                .await?
+        } else {
+            self.conn
+                .query(
+                    "SELECT id, message_id, subject, author, date, status FROM patchsets ORDER BY date DESC",
+                    libsql::params![],
+                )
+                .await?
+        };
 
         let mut patchsets = Vec::new();
         while let Ok(Some(row)) = rows.next().await {

@@ -21,12 +21,16 @@ use tracing_subscriber::{EnvFilter, fmt};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
-struct Cli {}
+struct Cli {
+    /// Number of last messages to ingest
+    #[arg(long)]
+    n_last: Option<usize>,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse command line arguments
-    let _cli = Cli::parse();
+    let cli = Cli::parse();
 
     // Initialize tracing with EnvFilter, defaulting to "info" if RUST_LOG is not set
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
@@ -54,86 +58,56 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create internal task queue
     let (tx, mut rx) = mpsc::channel::<Event>(100);
 
-        // Spawn Worker (Placeholder)
+    // Spawn Worker (Placeholder)
 
-        tokio::spawn(async move {
+    tokio::spawn(async move {
+        info!("Worker started");
 
-            info!("Worker started");
+        while let Some(event) = rx.recv().await {
+            match event {
+                Event::ArticleFetched {
+                    group,
 
-            while let Some(event) = rx.recv().await {
+                    article_id,
 
-                match event {
+                    content,
 
-                    Event::ArticleFetched {
+                    raw,
+                } => {
+                    let raw_bytes = match raw {
+                        Some(b) => b,
 
-                        group,
+                        None => content.join("\n").into_bytes(),
+                    };
 
-                        article_id,
+                    match crate::patch::parse_email(&raw_bytes) {
+                        Ok((metadata, _)) => {
+                            let subject = if metadata.subject.len() > 80 {
+                                format!("{}...", &metadata.subject[..77])
+                            } else {
+                                metadata.subject.clone()
+                            };
 
-                        content,
-
-                        raw,
-
-                    } => {
-
-                        let raw_bytes = match raw {
-
-                            Some(b) => b,
-
-                            None => content.join("\n").into_bytes(),
-
-                        };
-
-    
-
-                        match crate::patch::parse_email(&raw_bytes) {
-
-                            Ok((metadata, _)) => {
-
-                                let subject = if metadata.subject.len() > 80 {
-
-                                    format!("{}...", &metadata.subject[..77])
-
-                                } else {
-
-                                    metadata.subject.clone()
-
-                                };
-
-                                info!(
-
-                                    "Article: group={}, id={}, author={}, subject=\"{}\"",
-
-                                    group, article_id, metadata.author, subject
-
-                                );
-
-                            }
-
-                            Err(e) => {
-
-                                info!(
-
-                                    "Article (parse failed): group={}, id={}, error={}",
-
-                                    group, article_id, e
-
-                                );
-
-                            }
-
+                            info!(
+                                "Article: group={}, id={}, author={}, subject=\"{}\"",
+                                group, article_id, metadata.author, subject
+                            );
                         }
 
+                        Err(e) => {
+                            info!(
+                                "Article (parse failed): group={}, id={}, error={}",
+                                group, article_id, e
+                            );
+                        }
                     }
-
                 }
-
             }
-
-        });
+        }
+    });
 
     // Start Ingestor
-    let ingestor = Ingestor::new(settings.clone(), db.clone(), tx);
+    let ingestor = Ingestor::new(settings.clone(), db.clone(), tx, cli.n_last);
     tokio::spawn(async move {
         if let Err(e) = ingestor.run().await {
             error!("Ingestor fatal error: {}", e);
@@ -154,4 +128,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Shutting down...");
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cli_parsing() {
+        let args = vec!["sashiko", "--n-last", "100"];
+        let cli = Cli::parse_from(args);
+        assert_eq!(cli.n_last, Some(100));
+
+        let args = vec!["sashiko"];
+        let cli = Cli::parse_from(args);
+        assert_eq!(cli.n_last, None);
+    }
 }
