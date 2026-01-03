@@ -15,9 +15,3 @@ api_key = "your-api-key"
 [server]
 host = "127.0.0.1"
 port = 8080
-
-[ingestion]
-
-[ingestion.archive]
-path = "archives/lkml/18.git"
-url = "https://lore.kernel.org/lkml/18.git"

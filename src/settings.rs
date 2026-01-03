@@ -33,25 +33,11 @@ pub struct ServerSettings {
 
 #[derive(Debug, Deserialize, Clone)]
 #[allow(unused)]
-pub struct ArchiveSettings {
-    pub path: String,
-    pub url: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-#[allow(unused)]
-pub struct IngestorSettings {
-    pub archive: Option<ArchiveSettings>,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-#[allow(unused)]
 pub struct Settings {
     pub database: DatabaseSettings,
     pub nntp: NntpSettings,
     pub ai: AiSettings,
     pub server: ServerSettings,
-    pub ingestion: IngestorSettings,
 }
 
 impl Settings {

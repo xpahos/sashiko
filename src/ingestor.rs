@@ -57,46 +57,65 @@ impl Ingestor {
     }
 
     async fn run_git_bootstrap(&self, n: usize) -> Result<()> {
-        let archive_settings = self
-            .settings
-            .ingestion
-            .archive
-            .as_ref()
-            .ok_or_else(|| anyhow!("Archive settings missing for bootstrap"))?;
+        for group in &self.settings.nntp.groups {
+            let (url, path) = self.resolve_git_info(group);
+            info!("Bootstrapping group {} from {} to {:?}", group, url, path);
 
-        let path = std::path::Path::new(&archive_settings.path);
+            if let Err(e) = self.bootstrap_repo(&url, &path, n).await {
+                error!("Failed to bootstrap group {}: {}", group, e);
+            } else if let Err(e) = self.ingest_git_objects(&path, Some(n)).await {
+                error!("Failed to ingest objects for group {}: {}", group, e);
+            }
+        }
+        Ok(())
+    }
 
+    fn resolve_git_info(&self, group: &str) -> (String, std::path::PathBuf) {
+        // Dynamic path: archives/<group_name>
+        let path = std::path::PathBuf::from("archives").join(group);
+
+        // Dynamic URL heuristic
+        // org.kernel.vger.linux-kernel -> lkml
+        // org.kernel.vger.netdev -> netdev
+        // etc.
+        let list_id = if group == "org.kernel.vger.linux-kernel" {
+            "lkml"
+        } else {
+            group.split('.').next_back().unwrap_or(group)
+        };
+
+        // We assume the standard lore.kernel.org structure.
+        // Using 0.git as a safe default entry point for cloning.
+        let url = format!("https://lore.kernel.org/{}/0.git", list_id);
+
+        (url, path)
+    }
+
+    async fn bootstrap_repo(&self, url: &str, path: &std::path::Path, n: usize) -> Result<()> {
         // 1. Ensure repo exists
         if !path.exists() {
-            if let Some(url) = &archive_settings.url {
-                info!(
-                    "Cloning archive from {} to {:?} with depth {}",
-                    url, path, n
-                );
-                // Parent directory must exist
-                if let Some(parent) = path.parent() {
-                    tokio::fs::create_dir_all(parent).await?;
-                }
+            info!(
+                "Cloning archive from {} to {:?} with depth {}",
+                url, path, n
+            );
+            // Parent directory must exist
+            if let Some(parent) = path.parent() {
+                tokio::fs::create_dir_all(parent).await?;
+            }
 
-                let output = Command::new("git")
-                    .arg("clone")
-                    .arg("--bare")
-                    .arg(format!("--depth={}", n))
-                    .arg(url)
-                    .arg(path)
-                    .output()
-                    .await?;
+            let output = Command::new("git")
+                .arg("clone")
+                .arg("--bare")
+                .arg(format!("--depth={}", n))
+                .arg(url)
+                .arg(path)
+                .output()
+                .await?;
 
-                if !output.status.success() {
-                    return Err(anyhow!(
-                        "Git clone failed: {}",
-                        String::from_utf8_lossy(&output.stderr)
-                    ));
-                }
-            } else {
+            if !output.status.success() {
                 return Err(anyhow!(
-                    "Archive path {:?} does not exist and no URL provided",
-                    path
+                    "Git clone failed: {}",
+                    String::from_utf8_lossy(&output.stderr)
                 ));
             }
         } else {
@@ -121,9 +140,7 @@ impl Ingestor {
                 );
             }
         }
-
-        // 2. Ingest
-        self.ingest_git_objects(path, Some(n)).await
+        Ok(())
     }
     async fn run_nntp(&self) -> Result<()> {
         info!(
