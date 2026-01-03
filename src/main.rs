@@ -25,6 +25,10 @@ struct Cli {
     /// Number of last messages to ingest
     #[arg(long)]
     n_last: Option<usize>,
+
+    /// Disable NNTP ingestor
+    #[arg(long)]
+    no_nntp: bool,
 }
 
 #[tokio::main]
@@ -107,7 +111,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     // Start Ingestor
-    let ingestor = Ingestor::new(settings.clone(), db.clone(), tx, cli.n_last);
+    let ingestor = Ingestor::new(settings.clone(), db.clone(), tx, cli.n_last, cli.no_nntp);
     tokio::spawn(async move {
         if let Err(e) = ingestor.run().await {
             error!("Ingestor fatal error: {}", e);
@@ -136,12 +140,14 @@ mod tests {
 
     #[test]
     fn test_cli_parsing() {
-        let args = vec!["sashiko", "--n-last", "100"];
+        let args = vec!["sashiko", "--n-last", "100", "--no-nntp"];
         let cli = Cli::parse_from(args);
         assert_eq!(cli.n_last, Some(100));
+        assert!(cli.no_nntp);
 
         let args = vec!["sashiko"];
         let cli = Cli::parse_from(args);
         assert_eq!(cli.n_last, None);
+        assert!(!cli.no_nntp);
     }
 }
