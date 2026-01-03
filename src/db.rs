@@ -79,17 +79,6 @@ impl Database {
         Ok(())
     }
 
-    pub async fn message_exists(&self, message_id: &str) -> Result<bool> {
-        let mut rows = self
-            .conn
-            .query(
-                "SELECT 1 FROM patchsets WHERE message_id = ?",
-                libsql::params![message_id],
-            )
-            .await?;
-        Ok(rows.next().await?.is_some())
-    }
-
     pub async fn create_patchset(
         &self,
         message_id: &str,
@@ -100,25 +89,22 @@ impl Database {
     ) -> Result<i64> {
         self.conn
             .execute(
-                "INSERT INTO patchsets (message_id, subject, author, date, total_parts, received_parts, status) VALUES (?, ?, ?, ?, ?, 1, 'Pending') ON CONFLICT(message_id) DO UPDATE SET received_parts = received_parts + 1",
+                "INSERT INTO patchsets (message_id, subject, author, date, total_parts, received_parts, status) 
+                 VALUES (?, ?, ?, ?, ?, 1, 'Pending') 
+                 ON CONFLICT(message_id) DO UPDATE SET 
+                    author = excluded.author,
+                    subject = excluded.subject,
+                    date = excluded.date",
                 libsql::params![message_id, subject, author, date, total_parts],
             )
             .await?;
-
-        let mut rows = self
-            .conn
-            .query(
-                "SELECT id FROM patchsets WHERE message_id = ?",
-                libsql::params![message_id],
-            )
-            .await?;
+        
+        let mut rows = self.conn.query("SELECT id FROM patchsets WHERE message_id = ?", libsql::params![message_id]).await?;
         if let Ok(Some(row)) = rows.next().await {
             let id: i64 = row.get(0)?;
             Ok(id)
         } else {
-            Err(anyhow::anyhow!(
-                "Failed to retrieve patchset ID after insert"
-            ))
+            Err(anyhow::anyhow!("Failed to retrieve patchset ID after insert"))
         }
     }
 
