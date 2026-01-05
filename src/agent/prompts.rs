@@ -12,21 +12,13 @@ impl PromptRegistry {
         Self { base_dir }
     }
 
+    pub fn get_base_dir(&self) -> &PathBuf {
+        &self.base_dir
+    }
+
     pub async fn get_system_prompt(&self) -> Result<String> {
-        let identity = fs::read_to_string(self.base_dir.join("core/identity.md"))
-            .await
-            .unwrap_or_else(|_| "You are a Linux Kernel Maintainer.".to_string());
-        let workflow = fs::read_to_string(self.base_dir.join("core/review_workflow.md"))
-            .await
-            .unwrap_or_else(|_| "Follow the standard review process.".to_string());
-
-        let cot_and_json = r#"
-## Analysis Protocol
-You must not output the review immediately. You must first perform a detailed analysis using the following steps:
-1. **Context Verification**: Identify the modified files and functions. If you need to see the full file content or definition of a function, use `read_file` or `git_grep`. Do not guess.
-2. **Safety Check**: Look for common kernel vulnerabilities (UAF, buffer overflows, race conditions, locking issues).
-3. **Style Check**: Verify adherence to kernel coding style (checkpatch.pl rules).
-
+        let identity = "You're an expert Linux kernel developer and maintainer with deepk knowledge of Linux, Operating Sytems, modern hardware and Linux community standards and processes.";
+        let json_protocol = r#"
 ## Output Format
 You must respond with a valid JSON object. Do not include markdown code blocks (```json ... ```) around the output, just the raw JSON. The JSON must adhere to this schema:
 
@@ -48,8 +40,7 @@ You must respond with a valid JSON object. Do not include markdown code blocks (
   ]
 }
 "#;
-
-        Ok(format!("{}\n\n{}\n{}", identity, workflow, cot_and_json))
+        Ok(format!("{}\n{}", identity, json_protocol))
     }
 
     pub async fn build_context_prompt(&self, patchset: &Value) -> Result<String> {

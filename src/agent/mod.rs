@@ -41,11 +41,22 @@ impl Agent {
     pub async fn run(&mut self, patchset: Value) -> Result<AgentResult> {
         let system_prompt = self.prompts.get_system_prompt().await?;
         let context_prompt = self.prompts.build_context_prompt(&patchset).await?;
+        let review_core = tokio::fs::read_to_string(self.prompts.get_base_dir().join("review-core.md"))
+            .await
+            .unwrap_or_else(|_| "Deep dive regression analysis protocol.".to_string());
 
         let initial_user_message = format!(
-            "Review this patchset:\nSubject: {}\\nAuthor: {}\\n\n{}",
+            "Using the prompt review-prompts/review-core.md run a deep dive regression analysis of the top commit in the Linux source tree.\n\n\
+             The 'top commit' to analyze is:\n\
+             Subject: {}\n\
+             Author: {}\n\n\
+             ## Review Protocol (review-core.md)\n\
+             {}\n\n\
+             ## Additional Context\n\
+             {}",
             patchset["subject"].as_str().unwrap_or("Unknown"),
             patchset["author"].as_str().unwrap_or("Unknown"),
+            review_core,
             context_prompt
         );
 
