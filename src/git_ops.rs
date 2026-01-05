@@ -206,6 +206,8 @@ pub async fn ensure_remote(repo_path: &Path, name: &str, url: &str) -> Result<()
         return Err(anyhow!("Refusing to add non-kernel.org remote: {}", url));
     }
 
+    let mut just_added = false;
+
     // 2. Check if exists
     let check = Command::new("git")
         .current_dir(repo_path)
@@ -223,9 +225,37 @@ pub async fn ensure_remote(repo_path: &Path, name: &str, url: &str) -> Result<()
         if !add.status.success() {
             return Err(anyhow!("Failed to add remote: {}", String::from_utf8_lossy(&add.stderr)));
         }
+        just_added = true;
     }
 
-    // 3. Fetch
+    // 3. Lazy Fetch Check
+    let timestamp_dir = repo_path.join(".sashiko/fetch_timestamps");
+    if !timestamp_dir.exists() {
+        std::fs::create_dir_all(&timestamp_dir)?;
+    }
+    let timestamp_file = timestamp_dir.join(name);
+    
+    let should_fetch = if just_added {
+        true
+    } else if let Ok(metadata) = std::fs::metadata(&timestamp_file) {
+        if let Ok(modified) = metadata.modified() {
+            match std::time::SystemTime::now().duration_since(modified) {
+                Ok(age) => age > std::time::Duration::from_secs(12 * 3600), // 12 hours
+                Err(_) => true, // Time skew, fetch to be safe
+            }
+        } else {
+            true
+        }
+    } else {
+        true // File missing
+    };
+
+    if !should_fetch {
+        info!("Skipping fetch for {} (fresh)", name);
+        return Ok(());
+    }
+
+    // 4. Fetch
     info!("Fetching remote {}", name);
     let fetch = Command::new("git")
         .current_dir(repo_path)
@@ -236,6 +266,9 @@ pub async fn ensure_remote(repo_path: &Path, name: &str, url: &str) -> Result<()
     if !fetch.status.success() {
         return Err(anyhow!("Failed to fetch remote {}: {}", name, String::from_utf8_lossy(&fetch.stderr)));
     }
+
+    // Update timestamp
+    let _ = std::fs::File::create(&timestamp_file); // Touch file
 
     Ok(())
 }
