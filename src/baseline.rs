@@ -144,7 +144,7 @@ impl BaselineRegistry {
                                 if !parts.is_empty() {
                                     let url = parts[0].to_string();
                                     let branch = if parts.len() > 1 {
-                                        Some(parts[1..].join(" "))
+                                        Some(parts[1].to_string())
                                     } else {
                                         None
                                     };

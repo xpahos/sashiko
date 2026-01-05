@@ -301,7 +301,7 @@ pub async fn ensure_remote(
         info!("Fetching remote {}", name);
         let fetch = Command::new("git")
             .current_dir(repo_path)
-            .args(["fetch", name])
+            .args(["fetch", "--prune", name])
             .output()
             .await?;
 
