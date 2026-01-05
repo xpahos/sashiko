@@ -1,12 +1,12 @@
 use anyhow::{Result, anyhow};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::{Mutex, OnceLock};
 use tempfile::TempDir;
 use tokio::process::Command;
-use tracing::{info, warn};
-use std::sync::{OnceLock, Mutex};
-use std::collections::HashMap;
-use std::sync::Arc;
 use tokio::sync::Mutex as AsyncMutex;
+use tracing::{info, warn};
 
 #[allow(dead_code)]
 pub struct GitWorktree {
@@ -17,12 +17,18 @@ pub struct GitWorktree {
 
 impl GitWorktree {
     #[allow(dead_code)]
-    pub async fn new(repo_path: &Path, commit_hash: &str, parent_dir: Option<&Path>) -> Result<Self> {
+    pub async fn new(
+        repo_path: &Path,
+        commit_hash: &str,
+        parent_dir: Option<&Path>,
+    ) -> Result<Self> {
         let temp_dir = if let Some(parent) = parent_dir {
             if !parent.exists() {
                 std::fs::create_dir_all(parent)?;
             }
-            tempfile::Builder::new().prefix("sashiko-worktree-").tempdir_in(parent)?
+            tempfile::Builder::new()
+                .prefix("sashiko-worktree-")
+                .tempdir_in(parent)?
         } else {
             TempDir::new()?
         };
@@ -213,7 +219,12 @@ fn get_remote_lock(name: &str) -> Arc<AsyncMutex<()>> {
         .clone()
 }
 
-pub async fn ensure_remote(repo_path: &Path, name: &str, url: &str, force_fetch: bool) -> Result<()> {
+pub async fn ensure_remote(
+    repo_path: &Path,
+    name: &str,
+    url: &str,
+    force_fetch: bool,
+) -> Result<()> {
     // 1. Security Check
     if !url.contains("kernel.org") {
         return Err(anyhow!("Refusing to add non-kernel.org remote: {}", url));
@@ -259,7 +270,7 @@ pub async fn ensure_remote(repo_path: &Path, name: &str, url: &str, force_fetch:
         .and_then(|m| m.modified())
         .ok()
         .and_then(|m| std::time::SystemTime::now().duration_since(m).ok());
-    
+
     let should_fetch = if just_added {
         true
     } else {
@@ -278,7 +289,11 @@ pub async fn ensure_remote(repo_path: &Path, name: &str, url: &str, force_fetch:
     };
 
     if !should_fetch {
-        let reason = if force_fetch { "forced but recently fetched" } else { "fresh" };
+        let reason = if force_fetch {
+            "forced but recently fetched"
+        } else {
+            "fresh"
+        };
         info!("Skipping fetch for {} ({})", name, reason);
         return Ok(());
     }
@@ -292,7 +307,26 @@ pub async fn ensure_remote(repo_path: &Path, name: &str, url: &str, force_fetch:
         .await?;
 
     if !fetch.status.success() {
-        return Err(anyhow!("Failed to fetch remote {}: {}", name, String::from_utf8_lossy(&fetch.stderr)));
+        return Err(anyhow!(
+            "Failed to fetch remote {}: {}",
+            name,
+            String::from_utf8_lossy(&fetch.stderr)
+        ));
+    }
+
+    // Ensure HEAD is set correctly
+    let set_head = Command::new("git")
+        .current_dir(repo_path)
+        .args(["remote", "set-head", name, "--auto"])
+        .output()
+        .await?;
+
+    if !set_head.status.success() {
+        warn!(
+            "Failed to set-head for remote {}: {}",
+            name,
+            String::from_utf8_lossy(&set_head.stderr)
+        );
     }
 
     // Update timestamp
@@ -311,6 +345,10 @@ pub async fn get_commit_hash(path: &Path, ref_name: &str) -> Result<String> {
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     } else {
-        Err(anyhow!("Failed to resolve {}: {}", ref_name, String::from_utf8_lossy(&output.stderr)))
+        Err(anyhow!(
+            "Failed to resolve {}: {}",
+            ref_name,
+            String::from_utf8_lossy(&output.stderr)
+        ))
     }
 }

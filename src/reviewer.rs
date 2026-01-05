@@ -177,7 +177,7 @@ impl Reviewer {
                                 patchset_id, name, url
                             );
                             match ensure_remote(&repo_path, &name, &url, false).await {
-                                Ok(_) => (format!("{}/master", name), Some((url, name)), None),
+                                Ok(_) => (format!("{}/HEAD", name), Some((url, name)), None),
                                 Err(e) => {
                                     let msg = format!(
                                         "Failed to fetch remote {}: {}. Skipping candidate.",
