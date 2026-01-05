@@ -180,6 +180,9 @@ async fn run_review_tool(input_payload: &serde_json::Value, settings: &Settings)
     if all_applied {
         Ok("Applied".to_string())
     } else {
+        for p in patches.iter().filter(|p| p["status"] == "failed").take(3) {
+            warn!("Patch {} failed: {}", p["index"], p["stderr"].as_str().unwrap_or(""));
+        }
         Ok("Failed".to_string())
     }
 }

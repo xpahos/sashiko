@@ -62,7 +62,7 @@ async fn main() -> Result<()> {
     let settings = Settings::new().unwrap();
 
     // Data Loading Strategy: DB vs JSON Stdin
-    let (patchset_id, subject, diffs) = if args.json {
+    let (patchset_id, _subject, diffs) = if args.json {
         // Read from Stdin
         let mut buffer = String::new();
         std::io::stdin().read_to_string(&mut buffer)?;
