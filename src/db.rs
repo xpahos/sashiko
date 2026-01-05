@@ -806,7 +806,7 @@ impl Database {
         offset: usize,
         query: Option<String>,
     ) -> Result<Vec<PatchsetRow>> {
-        let (where_clause, mut params) = self.build_search(query);
+        let (where_clause, params) = self.build_search(query);
         let sql = format!(
             "SELECT id, subject, status, thread_id, author, date, cover_letter_message_id, total_parts, received_parts FROM patchsets {} ORDER BY id DESC LIMIT ? OFFSET ?",
             where_clause
@@ -858,7 +858,7 @@ impl Database {
         offset: usize,
         query: Option<String>,
     ) -> Result<Vec<MessageRow>> {
-        let (where_clause, mut params) = self.build_search(query);
+        let (where_clause, params) = self.build_search(query);
         let sql = format!(
             "SELECT id, message_id, thread_id, in_reply_to, author, subject, date, body, to_recipients, cc_recipients, git_blob_hash, mailing_list FROM messages {} ORDER BY date DESC LIMIT ? OFFSET ?",
             where_clause
@@ -872,7 +872,6 @@ impl Database {
         args.push(libsql::Value::Integer(offset as i64));
 
         let mut rows = self.conn.query(&sql, args).await?;
-
         let mut messages = Vec::new();
         while let Ok(Some(row)) = rows.next().await {
             messages.push(MessageRow {
