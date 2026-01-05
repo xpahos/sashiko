@@ -88,13 +88,41 @@ impl Agent {
                 return Err(anyhow!("Agent exceeded maximum turns ({})", MAX_TURNS));
             }
 
+            let response_schema = json!({
+                "type": "object",
+                "properties": {
+                    "analysis_trace": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                    },
+                    "summary": { "type": "string" },
+                    "score": { "type": "number" },
+                    "verdict": { "type": "string" },
+                    "findings": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "file": { "type": "string" },
+                                "line": { "type": "integer" },
+                                "severity": { "type": "string" },
+                                "message": { "type": "string" },
+                                "suggestion": { "type": "string" }
+                            },
+                            "required": ["file", "line", "severity", "message"]
+                        }
+                    }
+                },
+                "required": ["analysis_trace", "summary", "score", "verdict", "findings"]
+            });
+
             let req = GenerateContentRequest {
                 contents: self.history.clone(),
                 tools: Some(vec![self.tools.get_declarations()]),
                 system_instruction: Some(system_content.clone()),
                 generation_config: Some(GenerationConfig {
                     response_mime_type: Some("application/json".to_string()),
-                    response_schema: None,
+                    response_schema: Some(response_schema),
                     temperature: Some(0.2),
                 }),
             };
