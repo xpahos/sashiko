@@ -34,6 +34,7 @@
 - [ ] Integrate with `review-prompts` repository logic.
 - [ ] Implement consensus/comparison logic for multiple LLM runs.
 - [x] **Task**: Implement `sashiko-review` agent with Gemini 3 Pro and Git Tools.
+- [x] **Task**: Integrate reviewer tool into main Sashiko loop (concurrent processing).
 
 ## Phase 4: Web API & Frontend
 - [x] Build Axum REST API for patches, reviews, and stats.
