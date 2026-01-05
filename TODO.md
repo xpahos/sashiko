@@ -29,9 +29,9 @@
 - [x] **Task**: Implement Git-Backed Content Storage (store hashes, read from git, reduce DB size).
 
 ## Phase 3: AI Logic & Interaction Tracking (In Progress)
-- [ ] Implement model-agnostic AI provider abstraction.
+- [x] Implement model-agnostic AI provider abstraction.
 - [ ] Set up `ai_interactions` table and workflow engine for chain restoration.
-- [ ] Integrate with `review-prompts` repository logic.
+- [x] Integrate with `review-prompts` repository logic.
 - [ ] Implement consensus/comparison logic for multiple LLM runs.
 - [x] **Task**: Implement `sashiko-review` agent with Gemini 3 Pro and Git Tools.
 - [x] **Task**: Integrate reviewer tool into main Sashiko loop (concurrent processing).
