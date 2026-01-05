@@ -9,7 +9,7 @@ groups = ["org.kernel.vger.linux-kernel"]
 
 [ai]
 provider = "gemini"
-model = "gemini-3-pro"
+model = "gemini-3-flash-preview"
 
 [server]
 host = "127.0.0.1"
@@ -19,5 +19,5 @@ port = 8080
 repository_path = "linux"
 
 [review]
-concurrency = 5
+concurrency = 20
 worktree_dir = "review_trees"

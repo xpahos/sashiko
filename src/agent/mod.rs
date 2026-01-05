@@ -41,12 +41,18 @@ impl Agent {
 
         let system_content = Content {
             role: "user".to_string(), // Using user role for system instruction placeholder if needed, but we use the field.
-            parts: vec![Part::Text(system_prompt)],
+            parts: vec![Part::Text {
+                text: system_prompt,
+                thought_signature: None,
+            }],
         };
 
         self.history.push(Content {
             role: "user".to_string(),
-            parts: vec![Part::Text(initial_user_message)],
+            parts: vec![Part::Text {
+                text: initial_user_message,
+                thought_signature: None,
+            }],
         });
 
         loop {
@@ -75,7 +81,10 @@ impl Agent {
 
             for part in &content.parts {
                 match part {
-                    Part::FunctionCall(call) => {
+                    Part::FunctionCall {
+                        function_call: call,
+                        ..
+                    } => {
                         has_calls = true;
                         info!("Tool Call: {} args: {}", call.name, call.args);
 
@@ -87,12 +96,14 @@ impl Agent {
                             }
                         };
 
-                        function_responses.push(Part::FunctionResponse(FunctionResponse {
-                            name: call.name.clone(),
-                            response: result,
-                        }));
+                        function_responses.push(Part::FunctionResponse {
+                            function_response: FunctionResponse {
+                                name: call.name.clone(),
+                                response: result,
+                            },
+                        });
                     }
-                    Part::Text(text) => {
+                    Part::Text { text, .. } => {
                         final_text.push_str(text);
                     }
                     _ => {}

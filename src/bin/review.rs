@@ -1,17 +1,17 @@
 use anyhow::Result;
 use clap::Parser;
 use sashiko::{
-    // agent::{Agent, tools::ToolBox, prompts::PromptRegistry},
-    // ai::gemini::GeminiClient,
+    agent::{Agent, prompts::PromptRegistry, tools::ToolBox},
+    ai::gemini::GeminiClient,
     db::Database,
     git_ops::GitWorktree,
     settings::Settings,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::io::Read;
 use std::path::PathBuf;
-use tracing::info;
+use tracing::{error, info};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -38,17 +38,17 @@ struct Args {
     #[arg(long, default_value = "review-prompts")]
     prompts: PathBuf,
 
-    #[arg(long, default_value = "gemini-1.5-pro-latest")]
+    #[arg(long, default_value = "gemini-3-flash-preview")]
     model: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 struct PatchInput {
     index: i64,
     diff: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 struct ReviewInput {
     id: i64,
     subject: String,
@@ -62,7 +62,7 @@ async fn main() -> Result<()> {
     let settings = Settings::new().unwrap();
 
     // Data Loading Strategy: DB vs JSON Stdin
-    let (patchset_id, _subject, diffs) = if args.json {
+    let (patchset_id, subject, patches) = if args.json {
         // Read from Stdin
         let mut buffer = String::new();
         std::io::stdin().read_to_string(&mut buffer)?;
@@ -82,8 +82,8 @@ async fn main() -> Result<()> {
             db.get_patchset_details(id)
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("Patchset {} not found", id))?
-        } else if let Some(msg_id) = args.message_id {
-            db.get_patchset_details_by_msgid(&msg_id)
+        } else if let Some(ref msg_id) = args.message_id {
+            db.get_patchset_details_by_msgid(msg_id)
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("Patchset for message ID {} not found", msg_id))?
         } else {
@@ -119,17 +119,19 @@ async fn main() -> Result<()> {
     let worktree = GitWorktree::new(&repo_path, &baseline, args.worktree_dir.as_deref()).await?;
 
     info!("Created worktree at {:?}", worktree.path);
-    info!("Found {} patches to apply", diffs.len());
+    info!("Found {} patches to apply", patches.len());
 
     let mut patch_results = Vec::new();
+    let mut all_applied = true;
 
-    for p in diffs {
+    for p in &patches {
         info!("Applying patch part {}", p.index);
         match worktree.apply_raw_diff(&p.diff).await {
             Ok(output) => {
                 let status = if output.status.success() {
                     "applied"
                 } else {
+                    all_applied = false;
                     "failed"
                 };
                 let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -148,6 +150,7 @@ async fn main() -> Result<()> {
                 }));
             }
             Err(e) => {
+                all_applied = false;
                 info!("Error applying patch {}: {}", p.index, e);
                 patch_results.push(json!({
                     "index": p.index,
@@ -158,11 +161,39 @@ async fn main() -> Result<()> {
         }
     }
 
+    let mut review_content = None;
+
+    if all_applied {
+        info!("All patches applied. Starting AI review...");
+        let client = GeminiClient::new(args.model.clone());
+        let tools = ToolBox::new(worktree.path.clone(), args.prompts.clone());
+        let prompts = PromptRegistry::new(args.prompts.clone());
+        let mut agent = Agent::new(client, tools, prompts);
+
+        let patchset_val = json!({
+            "id": patchset_id,
+            "subject": subject,
+            "patches": patches
+        });
+
+        match agent.run(patchset_val).await {
+            Ok(review) => {
+                info!("AI review completed.");
+                review_content = Some(review);
+            }
+            Err(e) => {
+                error!("AI review failed: {}", e);
+            }
+        }
+    } else {
+        info!("Not all patches applied successfully. Skipping AI review.");
+    }
+
     let result = json!({
         "patchset_id": patchset_id,
         "baseline": baseline,
         "patches": patch_results,
-        "review": null
+        "review": review_content
     });
 
     println!("{}", serde_json::to_string_pretty(&result)?);
