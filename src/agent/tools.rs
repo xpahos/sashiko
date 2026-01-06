@@ -108,6 +108,31 @@ impl ToolBox {
                         "required": ["name"]
                     }),
                 },
+                FunctionDeclaration {
+                    name: "search_file_content".to_string(),
+                    description: "Search for a pattern in files using grep. Returns matching lines with context.".to_string(),
+                    parameters: json!({
+                        "type": "object",
+                        "properties": {
+                            "pattern": { "type": "string", "description": "Regex pattern to search for." },
+                            "path": { "type": "string", "description": "Directory to search in (defaults to root)." },
+                            "context_lines": { "type": "integer", "description": "Number of context lines to show (default 0)." }
+                        },
+                        "required": ["pattern"]
+                    }),
+                },
+                FunctionDeclaration {
+                    name: "find_files".to_string(),
+                    description: "Find files matching a glob pattern (e.g., '*.rs', 'src/**/mod.rs').".to_string(),
+                    parameters: json!({
+                        "type": "object",
+                        "properties": {
+                            "pattern": { "type": "string", "description": "Glob pattern to match." },
+                            "path": { "type": "string", "description": "Directory to search in (defaults to root)." }
+                        },
+                        "required": ["pattern"]
+                    }),
+                },
             ],
         }
     }
@@ -121,6 +146,8 @@ impl ToolBox {
             "git_show" => self.git_show(args).await,
             "list_dir" => self.list_dir(args).await,
             "read_prompt" => self.read_prompt(args).await,
+            "search_file_content" => self.search_file_content(args).await,
+            "find_files" => self.find_files(args).await,
             _ => Err(anyhow!("Unknown tool: {}", name)),
         }
     }
@@ -321,5 +348,82 @@ impl ToolBox {
             return Err(anyhow!("Path traversal detected: {:?}", full_path));
         }
         Ok(full_path)
+    }
+
+    async fn search_file_content(&self, args: Value) -> Result<Value> {
+        let pattern = args["pattern"]
+            .as_str()
+            .ok_or_else(|| anyhow!("Missing pattern"))?;
+        let path_str = args["path"].as_str().unwrap_or(".");
+        let context_lines = args["context_lines"].as_u64().unwrap_or(0);
+
+        let path = self.validate_path(path_str, &self.worktree_path)?;
+
+        let mut cmd = Command::new("grep");
+        cmd.current_dir(&self.worktree_path)
+            .arg("-rnI") // Recursive, line numbers, skip binary
+            .arg(format!("-C{}", context_lines))
+            .arg(pattern)
+            .arg(path);
+
+        let output = cmd.output().await?;
+
+        // grep returns exit code 1 if no matches found, which is not an error for us
+        if !output.status.success() && output.status.code() != Some(1) {
+             return Err(anyhow!(
+                "grep failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+
+        let content = String::from_utf8_lossy(&output.stdout).to_string();
+        if content.is_empty() {
+             return Ok(json!({ "matches": [], "message": "No matches found." }));
+        }
+
+        Ok(json!({ "content": self.truncate_output(content) }))
+    }
+
+    async fn find_files(&self, args: Value) -> Result<Value> {
+        let pattern = args["pattern"]
+            .as_str()
+            .ok_or_else(|| anyhow!("Missing pattern"))?;
+        let path_str = args["path"].as_str().unwrap_or(".");
+        
+        let path = self.validate_path(path_str, &self.worktree_path)?;
+
+        // Using 'find' command
+        let output = Command::new("find")
+            .current_dir(&self.worktree_path)
+            .arg(path)
+            .arg("-name")
+            .arg(pattern)
+            .arg("-not")
+            .arg("-path")
+            .arg("*/.*") // Ignore hidden files/dirs like .git
+            .output()
+            .await?;
+
+        if !output.status.success() {
+             return Err(anyhow!(
+                "find failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+
+        let content = String::from_utf8_lossy(&output.stdout).to_string();
+        let files: Vec<&str> = content.lines().collect();
+
+        // Limit results
+        if files.len() > 1000 {
+            let truncated = files[..1000].join("\n");
+             return Ok(json!({ 
+                 "files": truncated, 
+                 "total_found": files.len(),
+                 "message": "Output truncated to 1000 files."
+            }));
+        }
+
+        Ok(json!({ "files": content }))
     }
 }
