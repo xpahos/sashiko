@@ -1,4 +1,5 @@
 use crate::settings::DatabaseSettings;
+use crate::ReviewStatus;
 use anyhow::Result;
 use libsql::Builder;
 use serde::Serialize;
@@ -1515,14 +1516,26 @@ impl Database {
     }
 
     pub async fn reset_reviewing_status(&self) -> Result<u64> {
-        let count = self
+        let status_cancelled = ReviewStatus::Cancelled.as_str();
+        // Reset Patchsets
+        let count_ps = self
             .conn
             .execute(
-                "UPDATE patchsets SET status = 'Pending' WHERE status = 'Reviewing'",
+                format!("UPDATE patchsets SET status = '{}' WHERE status IN ('Applying', 'In Review', 'Reviewing')", status_cancelled).as_str(),
                 (),
             )
             .await?;
-        Ok(count)
+        
+        // Reset Reviews
+        let count_rev = self
+            .conn
+            .execute(
+                format!("UPDATE reviews SET status = '{}' WHERE status IN ('Applying', 'In Review')", status_cancelled).as_str(),
+                (),
+            )
+            .await?;
+
+        Ok(count_ps + count_rev)
     }
 
     pub async fn get_patchset_counts_by_status(

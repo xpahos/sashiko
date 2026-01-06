@@ -7,6 +7,7 @@ use crate::baseline::{BaselineRegistry, BaselineResolution, extract_files_from_d
 use crate::db::{AiInteractionParams, Database};
 use crate::git_ops::{ensure_remote, get_commit_hash};
 use crate::settings::Settings;
+use crate::ReviewStatus;
 use anyhow::Result;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -167,9 +168,9 @@ impl Reviewer {
 
                 info!("Starting review for patchset {}", patchset_id);
 
-                if let Err(e) = db.update_patchset_status(patchset_id, "Reviewing").await {
+                if let Err(e) = db.update_patchset_status(patchset_id, ReviewStatus::Applying.as_str()).await {
                     error!(
-                        "Failed to update status to Reviewing for {}: {}",
+                        "Failed to update status to Applying for {}: {}",
                         patchset_id, e
                     );
                     return;
@@ -229,7 +230,7 @@ impl Reviewer {
                 let candidates =
                     baseline_registry.resolve_candidates(&all_files, &subject, body.as_deref());
 
-                let mut final_status = "Applied".to_string(); // Assume success unless failure
+                let mut final_status = ReviewStatus::Reviewed.as_str().to_string(); // Assume success unless failure
                 let repo_path = PathBuf::from(&settings.git.repository_path);
 
                 // We only use the FIRST candidate for now (simplification) or loop?
@@ -328,6 +329,8 @@ impl Reviewer {
                                 }
                             };
 
+                            let _ = db.update_review_status(review_id, ReviewStatus::Applying.as_str(), None).await;
+
                             // Run tool for SPECIFIC patch index
                             match run_review_tool(
                                 patchset_id,
@@ -366,7 +369,7 @@ impl Reviewer {
                                             let _ = db
                                                 .complete_review(
                                                     review_id,
-                                                    "Failed",
+                                                    ReviewStatus::Failed.as_str(),
                                                     error_msg,
                                                     None,
                                                     None,
@@ -384,7 +387,7 @@ impl Reviewer {
                                                 continue;
                                             } else {
                                                 final_status =
-                                                    "Review Failed (Partial)".to_string();
+                                                    ReviewStatus::Failed.as_str().to_string();
                                                 break;
                                             }
                                         } else if let Some(review_content) =
@@ -430,7 +433,7 @@ impl Reviewer {
                                                 let _ = db
                                                     .complete_review(
                                                         review_id,
-                                                        "Finished",
+                                                        ReviewStatus::Reviewed.as_str(),
                                                         result_desc,
                                                         Some(&summary),
                                                         Some(&interaction_id),
@@ -443,7 +446,7 @@ impl Reviewer {
                                                 let _ = db
                                                     .complete_review(
                                                         review_id,
-                                                        "Failed",
+                                                        ReviewStatus::Failed.as_str(),
                                                         "AI returned null response",
                                                         None,
                                                         None,
@@ -460,7 +463,7 @@ impl Reviewer {
                                                     continue;
                                                 } else {
                                                     final_status =
-                                                        "Review Failed (Partial)".to_string();
+                                                        ReviewStatus::Failed.as_str().to_string();
                                                     break;
                                                 }
                                             }
@@ -478,7 +481,7 @@ impl Reviewer {
                                             let _ = db
                                                 .complete_review(
                                                     review_id,
-                                                    "Failed",
+                                                    ReviewStatus::Failed.as_str(),
                                                     error_msg,
                                                     None,
                                                     None,
@@ -490,7 +493,7 @@ impl Reviewer {
                                                 retries += 1;
                                                 continue;
                                             }
-                                            final_status = "Review Failed (Partial)".to_string();
+                                            final_status = ReviewStatus::Failed.as_str().to_string();
                                             break;
                                         }
                                     } else {
@@ -504,14 +507,14 @@ impl Reviewer {
                                         let _ = db
                                             .update_review_status(
                                                 review_id,
-                                                "Failed to apply",
+                                                ReviewStatus::Failed.as_str(),
                                                 Some(&patches_debug),
                                             )
                                             .await;
                                         let _ = db
                                             .complete_review(
                                                 review_id,
-                                                "Failed to apply",
+                                                ReviewStatus::Failed.as_str(),
                                                 error_msg,
                                                 None,
                                                 None,
@@ -521,7 +524,7 @@ impl Reviewer {
                                             .await;
 
                                         candidate_success = false;
-                                        final_status = "Failed".to_string();
+                                        final_status = ReviewStatus::Failed.as_str().to_string();
                                         break;
                                     }
                                 }
@@ -530,7 +533,7 @@ impl Reviewer {
                                     let _ = db
                                         .complete_review(
                                             review_id,
-                                            "Failed",
+                                            ReviewStatus::Failed.as_str(),
                                             &format!("Tool error: {}", e),
                                             None,
                                             None,
@@ -544,7 +547,7 @@ impl Reviewer {
                                         continue;
                                     }
                                     candidate_success = false;
-                                    final_status = "Failed".to_string();
+                                    final_status = ReviewStatus::Failed.as_str().to_string();
                                     break;
                                 }
                             }
@@ -561,9 +564,9 @@ impl Reviewer {
                     }
                 }
 
-                if !review_success && final_status == "Applied" {
+                if !review_success && final_status == ReviewStatus::Reviewed.as_str() {
                     // If we didn't succeed with any candidate, set to Failed
-                    final_status = "Failed".to_string();
+                    final_status = ReviewStatus::Failed.as_str().to_string();
                 }
 
                 info!(
@@ -682,7 +685,7 @@ async fn run_review_tool(
                     if let Some(type_str) = json_msg.get("type").and_then(|v| v.as_str()) {
                         if type_str == "ai_request" {
                             if !ai_started {
-                                let _ = db.update_review_status(review_id, "In review", None).await;
+                                let _ = db.update_review_status(review_id, ReviewStatus::InReview.as_str(), None).await;
                                 ai_started = true;
                             }
                             if let Some(payload_val) = json_msg.get("payload") {
@@ -721,7 +724,7 @@ async fn run_review_tool(
                             }
                         } else if type_str == "ai_request_with_cache" {
                              if !ai_started {
-                                let _ = db.update_review_status(review_id, "In review", None).await;
+                                let _ = db.update_review_status(review_id, ReviewStatus::InReview.as_str(), None).await;
                                 ai_started = true;
                             }
                             if let Some(payload_val) = json_msg.get("payload") {

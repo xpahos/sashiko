@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS patchsets (
     subject TEXT,
     author TEXT,
     date INTEGER,
-    status TEXT DEFAULT 'Incomplete', -- Incomplete, Pending, Assembled, Applied, Failed, Reviewed
+    status TEXT DEFAULT 'Incomplete', -- Incomplete, Pending, Applying, In Review, Cancelled, Reviewed, Failed
     total_parts INTEGER,
     received_parts INTEGER,
     subject_index INTEGER DEFAULT 9999,
@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS reviews (
     created_at INTEGER,
     interaction_id TEXT,
     baseline_id INTEGER,
-    status TEXT DEFAULT 'Pending', -- Pending, Failed to apply, In review, Finished, Failed
+    status TEXT DEFAULT 'Pending', -- Pending, Applying, In Review, Cancelled, Reviewed, Failed
     logs TEXT,
     inline_review TEXT,
     FOREIGN KEY(patchset_id) REFERENCES patchsets(id),
