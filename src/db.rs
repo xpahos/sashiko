@@ -1439,10 +1439,17 @@ impl Database {
         }
     }
 
-    pub async fn get_patch_diffs(&self, patchset_id: i64) -> Result<Vec<(i64, i64, String)>> {
+    pub async fn get_patch_diffs(
+        &self,
+        patchset_id: i64,
+    ) -> Result<Vec<(i64, i64, String, String, String, i64)>> {
         let mut rows = self.conn.query(
-            "SELECT id, part_index, diff FROM patches WHERE patchset_id = ? ORDER BY part_index ASC",
-            libsql::params![patchset_id]
+            "SELECT p.id, p.part_index, p.diff, m.subject, m.author, m.date 
+             FROM patches p 
+             JOIN messages m ON p.message_id = m.message_id 
+             WHERE p.patchset_id = ? 
+             ORDER BY p.part_index ASC",
+            libsql::params![patchset_id],
         ).await?;
 
         let mut diffs = Vec::new();
@@ -1450,7 +1457,10 @@ impl Database {
             let id: i64 = row.get(0)?;
             let index: i64 = row.get(1).unwrap_or(0);
             let diff: String = row.get(2)?;
-            diffs.push((id, index, diff));
+            let subject: String = row.get(3).unwrap_or_default();
+            let author: String = row.get(4).unwrap_or_default();
+            let date: i64 = row.get(5).unwrap_or(0);
+            diffs.push((id, index, diff, subject, author, date));
         }
         Ok(diffs)
     }

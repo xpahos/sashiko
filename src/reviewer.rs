@@ -187,7 +187,15 @@ impl Reviewer {
                 // patches_json for input payload (contains all patches)
                 let patches_json: Vec<_> = diffs
                     .iter()
-                    .map(|(_id, idx, diff)| json!({ "index": idx, "diff": diff }))
+                    .map(|(_id, idx, diff, subj, auth, date)| {
+                        json!({
+                            "index": idx,
+                            "diff": diff,
+                            "subject": subj,
+                            "author": auth,
+                            "date": date
+                        })
+                    })
                     .collect();
 
                 let input_payload = json!({
@@ -274,7 +282,7 @@ impl Reviewer {
                     // Now loop through patches
                     let mut candidate_success = true;
 
-                    for (patch_id, index, _diff) in &diffs {
+                    for (patch_id, index, _diff, _subj, _auth, _date) in &diffs {
                         info!(
                             "Reviewing patch {}/{} (ID: {})",
                             patchset_id, index, patch_id

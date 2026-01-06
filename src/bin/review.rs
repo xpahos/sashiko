@@ -43,6 +43,9 @@ struct Args {
 struct PatchInput {
     index: i64,
     diff: String,
+    subject: Option<String>,
+    author: Option<String>,
+    date: Option<i64>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -97,37 +100,87 @@ async fn main() -> Result<()> {
 
     for p in &patches_to_apply {
         info!("Applying patch part {}", p.index);
-        match worktree.apply_raw_diff(&p.diff).await {
-            Ok(output) => {
-                let status = if output.status.success() {
-                    "applied"
-                } else {
-                    all_applied = false;
-                    "failed"
-                };
-                let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
-                if status == "failed" {
-                    info!("Failed to apply patch {}: {}", p.index, stderr);
+        let mut applied_via_am = false;
+        let mut am_error = String::new();
+
+        if let (Some(author), Some(subject)) = (&p.author, &p.subject) {
+            // Try to construct mbox
+            let date_str = if let Some(ts) = p.date {
+                // Try format date using system date command
+                let output = std::process::Command::new("date")
+                    .arg("-R")
+                    .arg("-d")
+                    .arg(format!("@{}", ts))
+                    .output();
+                match output {
+                    Ok(o) if o.status.success() => {
+                        String::from_utf8_lossy(&o.stdout).trim().to_string()
+                    }
+                    _ => String::new(), // Fallback to no date (git am uses current)
                 }
+            } else {
+                String::new()
+            };
 
-                patch_results.push(json!({
-                    "index": p.index,
-                    "status": status,
-                    "stdout": stdout,
-                    "stderr": stderr,
-                    "exit_code": output.status.code()
-                }));
+            let mbox = format!(
+                "From: {}\nDate: {}\nSubject: {}\n\n{}\n",
+                author, date_str, subject, p.diff
+            );
+
+            match worktree.apply_patch(&mbox).await {
+                Ok(_) => {
+                    applied_via_am = true;
+                    patch_results.push(json!({
+                        "index": p.index,
+                        "status": "applied",
+                        "method": "git-am"
+                    }));
+                }
+                Err(e) => {
+                    info!("git am failed, falling back to git apply: {}", e);
+                    am_error = e.to_string();
+                }
             }
-            Err(e) => {
-                all_applied = false;
-                info!("Error applying patch {}: {}", p.index, e);
-                patch_results.push(json!({
-                    "index": p.index,
-                    "status": "error",
-                    "error": e.to_string()
-                }));
+        }
+
+        if !applied_via_am {
+            match worktree.apply_raw_diff(&p.diff).await {
+                Ok(output) => {
+                    let status = if output.status.success() {
+                        "applied"
+                    } else {
+                        all_applied = false;
+                        "failed"
+                    };
+                    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+                    if status == "failed" {
+                        info!("Failed to apply patch {}: {}", p.index, stderr);
+                    }
+
+                    patch_results.push(json!({
+                        "index": p.index,
+                        "status": status,
+                        "method": "git-apply",
+                        "stdout": stdout,
+                        "stderr": stderr,
+                        "exit_code": output.status.code(),
+                        "am_error": if !am_error.is_empty() { Some(am_error) } else { None }
+                    }));
+                }
+                Err(e) => {
+                    all_applied = false;
+                    info!("Error applying patch {}: {}", p.index, e);
+                    patch_results.push(json!({
+                        "index": p.index,
+                        "status": "error",
+                        "method": "git-apply",
+                        "error": e.to_string(),
+                        "am_error": if !am_error.is_empty() { Some(am_error) } else { None }
+                    }));
+                }
             }
         }
     }
