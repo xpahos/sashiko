@@ -1,4 +1,5 @@
 use crate::ai::gemini::{FunctionDeclaration, Tool};
+use crate::ai::truncator::Truncator;
 use anyhow::{Result, anyhow};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -23,14 +24,15 @@ impl ToolBox {
             function_declarations: vec![
                 FunctionDeclaration {
                     name: "read_file".to_string(),
-                    description: "Read the content of a file (with optional line range)."
+                    description: "Read the content of a file. In 'smart' mode, it collapses irrelevant code around the focus lines."
                         .to_string(),
                     parameters: json!({
                         "type": "object",
                         "properties": {
                             "path": { "type": "string", "description": "Relative path to the file." },
-                            "start_line": { "type": "integer", "description": "1-based start line (optional)." },
-                            "end_line": { "type": "integer", "description": "1-based end line (optional)." }
+                            "start_line": { "type": "integer", "description": "1-based start line (optional). In smart mode, this is the start of the focus area." },
+                            "end_line": { "type": "integer", "description": "1-based end line (optional). In smart mode, this is the end of the focus area." },
+                            "mode": { "type": "string", "enum": ["raw", "smart"], "description": "Read mode. Defaults to 'raw'." }
                         },
                         "required": ["path"]
                     }),
@@ -153,17 +155,9 @@ impl ToolBox {
     }
 
     fn truncate_output(&self, output: String) -> String {
-        const MAX_LEN: usize = 32 * 1024; // 32KB limit
-        if output.len() > MAX_LEN {
-            let mut truncated = output[..MAX_LEN].to_string();
-            truncated.push_str(&format!(
-                "\n... (truncated, total length: {} bytes)",
-                output.len()
-            ));
-            truncated
-        } else {
-            output
-        }
+        // Use Truncator's diff logic which is essentially head/tail truncation.
+        // 10k tokens ~ 40k chars.
+        Truncator::truncate_diff(&output, 10_000)
     }
 
     async fn read_file(&self, args: Value) -> Result<Value> {
@@ -172,6 +166,7 @@ impl ToolBox {
             .ok_or_else(|| anyhow!("Missing path"))?;
         let start_line = args["start_line"].as_u64().map(|v| v as usize);
         let end_line = args["end_line"].as_u64().map(|v| v as usize);
+        let mode = args["mode"].as_str().unwrap_or("raw");
 
         let path = self.validate_path(path_str, &self.worktree_path)?;
         let content = fs::read_to_string(path).await?;
@@ -179,6 +174,25 @@ impl ToolBox {
         let lines: Vec<&str> = content.lines().collect();
         let total_lines = lines.len();
 
+        if mode == "smart" {
+            let focus = match (start_line, end_line) {
+                (Some(s), Some(e)) => Some(s..e),
+                (Some(s), None) => Some(s..s+1), // Just one line focus if end not specified?
+                (None, Some(e)) => Some(1..e),
+                (None, None) => None,
+            };
+            
+            // Allow larger budget for read_file in smart mode
+            let truncated = Truncator::truncate_code(&content, focus, 20_000); 
+            
+            return Ok(json!({
+                "content": truncated,
+                "total_lines": total_lines,
+                "mode": "smart"
+            }));
+        }
+
+        // Raw mode (legacy behavior)
         let (start, end) = match (start_line, end_line) {
             (Some(s), Some(e)) => (s.max(1) - 1, e.min(total_lines)),
             (Some(s), None) => (s.max(1) - 1, total_lines),
@@ -270,7 +284,8 @@ impl ToolBox {
         }
 
         let content = String::from_utf8_lossy(&output.stdout).to_string();
-        Ok(json!({ "content": self.truncate_output(content) }))
+        // Use truncate_diff specifically
+        Ok(json!({ "content": Truncator::truncate_diff(&content, 10_000) }))
     }
 
     async fn git_show(&self, args: Value) -> Result<Value> {

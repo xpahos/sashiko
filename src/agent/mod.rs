@@ -10,6 +10,7 @@ use crate::agent::tools::ToolBox;
 use crate::ai::gemini::{
     Content, FunctionResponse, GeminiClient, GenerateContentRequest, GenerationConfig, Part,
 };
+use crate::ai::token_budget::TokenBudget;
 use anyhow::{Result, anyhow};
 use serde_json::{Value, json};
 use tracing::{info, warn};
@@ -47,44 +48,67 @@ impl Agent {
         }
     }
 
-    fn count_history_words(&self, system_instruction: &Option<Content>) -> usize {
+    fn estimate_history_tokens(&self, system_instruction: &Option<Content>) -> usize {
         let mut count = 0;
 
         // Count system instruction
         if let Some(content) = system_instruction {
-            count += self.count_content_words(content);
+            count += self.estimate_content_tokens(content);
         }
 
         // Count history
         for content in &self.history {
-            count += self.count_content_words(content);
+            count += self.estimate_content_tokens(content);
         }
 
         count
     }
 
-    fn count_content_words(&self, content: &Content) -> usize {
+    fn estimate_content_tokens(&self, content: &Content) -> usize {
         let mut count = 0;
         for part in &content.parts {
             match part {
                 Part::Text { text, .. } => {
-                    count += text.split_whitespace().count();
+                    count += TokenBudget::estimate_tokens(text);
                 }
                 Part::FunctionCall { function_call, .. } => {
-                    count += function_call.name.split_whitespace().count();
-                    count += function_call.args.to_string().split_whitespace().count();
+                    count += TokenBudget::estimate_tokens(&function_call.name);
+                    count += TokenBudget::estimate_tokens(&function_call.args.to_string());
                 }
                 Part::FunctionResponse { function_response } => {
-                    count += function_response.name.split_whitespace().count();
-                    count += function_response
-                        .response
-                        .to_string()
-                        .split_whitespace()
-                        .count();
+                    count += TokenBudget::estimate_tokens(&function_response.name);
+                    count += TokenBudget::estimate_tokens(
+                        &function_response.response.to_string(),
+                    );
                 }
             }
         }
         count
+    }
+
+    fn prune_history(&mut self, system_instruction: &Option<Content>) {
+        let limit = self.max_input_words; // Treating max_input_words as max_tokens for now
+        let mut current_tokens = self.estimate_history_tokens(system_instruction);
+
+        if current_tokens <= limit {
+            return;
+        }
+
+        info!(
+            "Context size ({} tokens) exceeds limit ({}). Pruning history...",
+            current_tokens, limit
+        );
+
+        // Keep index 0 (Task Prompt). Prune from index 1.
+        // We also want to avoid pruning the very last message if possible, but budget is strict.
+        // Prune oldest messages first (after index 0).
+        while current_tokens > limit && self.history.len() > 1 {
+            // Remove the oldest message after the prompt.
+            let removed = self.history.remove(1);
+            let removed_tokens = self.estimate_content_tokens(&removed);
+            current_tokens = current_tokens.saturating_sub(removed_tokens);
+            info!("Pruned message with {} tokens. Remaining: {}", removed_tokens, current_tokens);
+        }
     }
 
     pub async fn run(&mut self, patchset: Value) -> Result<AgentResult> {
@@ -174,6 +198,9 @@ impl Agent {
                 "required": ["analysis_trace", "summary", "score", "verdict", "findings"]
             });
 
+            // Enforce token budget by pruning
+            self.prune_history(&Some(system_content.clone()));
+
             let req = GenerateContentRequest {
                 contents: self.history.clone(),
                 tools: Some(vec![self.tools.get_declarations()]),
@@ -184,18 +211,10 @@ impl Agent {
                     temperature: Some(0.2),
                 }),
             };
+            
+            let token_count = self.estimate_history_tokens(&req.system_instruction);
+            info!("Sending request to Gemini ({} estimated tokens)...", token_count);
 
-            // Check input size
-            let word_count = self.count_history_words(&req.system_instruction);
-            if word_count > self.max_input_words {
-                return Err(anyhow!(
-                    "Input content exceeded maximum word limit ({} > {}). Stopping to prevent cost overrun.",
-                    word_count,
-                    self.max_input_words
-                ));
-            }
-
-            info!("Sending request to Gemini ({} words)...", word_count);
             let resp = self.client.generate_content(req).await?;
 
             if let Some(usage) = &resp.usage_metadata {
