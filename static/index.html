@@ -5,25 +5,114 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sashiko</title>
     <style>
-        body { font-family: monospace; max-width: 1200px; margin: 0 auto; padding: 20px; background-color: #f5f5f5; }
-        h1 { border-bottom: 1px solid #ccc; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; }
-        tr:hover { background-color: #e0e0e0; }
-        tr.selected { background-color: #d0d0d0; outline: 1px solid #aaa; }
+        :root {
+            --bg: #f5f5f5;
+            --border: #ccc;
+            --border-light: #eee;
+            --text: #24292f;
+            --text-muted: #666;
+            --text-dim: #999;
+            --link: #007bff;
+            --hover: #e0e0e0;
+            --selected: #d0d0d0;
+            --code-bg: #f6f8fa;
+            --code-border: #d0d7de;
+        }
+
+        * { box-sizing: border-box; }
+        
+        body { 
+            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+            font-size: 13px;
+            line-height: 1.4;
+            max-width: 1200px; 
+            margin: 0 auto; 
+            padding: 12px 16px;
+            background-color: var(--bg);
+            color: var(--text);
+        }
+
+        h1 { 
+            font-size: 1.3em;
+            margin: 0 0 12px 0;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        h2 {
+            font-size: 1.1em;
+            margin: 0 0 8px 0;
+            padding-bottom: 4px;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        h3 {
+            font-size: 1em;
+            margin: 12px 0 6px 0;
+        }
+
+        a { color: var(--link); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        
+        /* Navigation */
+        .nav { margin-bottom: 10px; }
+        .nav a { cursor: pointer; }
+        
+        /* Search and Controls */
+        .controls {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        .controls input[type="text"] {
+            flex: 1;
+            min-width: 200px;
+            max-width: 400px;
+            padding: 4px 8px;
+            font-family: inherit;
+            font-size: inherit;
+            border: 1px solid var(--border);
+            border-radius: 3px;
+        }
+        
+        .controls button, button {
+            padding: 4px 10px;
+            font-family: inherit;
+            font-size: inherit;
+            border: 1px solid var(--border);
+            background: #fff;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        
+        .controls button:hover, button:hover { background: var(--hover); }
+        .controls button:disabled, button:disabled { opacity: 0.5; cursor: default; }
+        .controls button.active { background: var(--selected); font-weight: bold; }
+
+        /* Table Styles */
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border-light); }
+        th { font-weight: 600; background: #fafafa; }
+        tr:hover { background-color: var(--hover); }
+        tr.selected { background-color: var(--selected); outline: 1px solid #aaa; }
+        tr { cursor: pointer; }
+
+        /* Status Badge */
         .status-badge { 
             display: inline-flex; 
             align-items: center; 
-            gap: 6px; 
-            padding: 0; 
+            gap: 4px; 
             font-size: 0.85em; 
             font-weight: bold; 
-            background: transparent; 
-            border: none; 
         }
         .status-badge::before {
             content: '#';
-            display: block;
             color: currentColor;
         }
         .status-Pending { color: #0366d6; }
@@ -31,104 +120,912 @@
         .status-Finished, .status-Applied, .status-Reviewed { color: #22863a; }
         .status-Failed { color: #d73a49; }
         .status-Incomplete { color: #6a737d; }
-        
+
+        /* Subsystem Tags - UNCHANGED */
         .tag { display: inline-block; background: #e0f7fa; color: #006064; padding: 1px 4px; border-radius: 3px; font-size: 0.75em; margin-right: 4px; border: 1px solid #b2ebf2; vertical-align: middle; }
-        .copy-btn { cursor: pointer; border: 1px solid #ccc; background: #fff; padding: 2px 5px; border-radius: 3px; font-size: 12px; }
-        .copy-btn:hover { background: #eee; }
+
+        /* Pagination */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            margin-top: 12px;
+            font-size: 0.9em;
+        }
+
+        /* Stats Footer */
+        .stats {
+            margin-top: 16px;
+            padding-top: 8px;
+            border-top: 1px solid var(--border);
+            font-size: 0.85em;
+            color: var(--text-muted);
+        }
+
+        /* Key-value display */
+        .kv { 
+            display: grid; 
+            grid-template-columns: 100px 1fr; 
+            gap: 4px 8px; 
+            margin-bottom: 4px;
+            font-size: 0.95em;
+        }
+        .kv .label { font-weight: 600; color: var(--text-muted); }
+
+        /* Section containers */
+        .section { margin-bottom: 16px; }
+
+        /* Copy button */
+        .copy-btn { 
+            cursor: pointer; 
+            border: 1px solid var(--border); 
+            background: #fff; 
+            padding: 1px 5px; 
+            border-radius: 3px; 
+            font-size: 11px;
+            margin-left: 6px;
+        }
+        .copy-btn:hover { background: var(--hover); }
+
+        /* Review Cards */
+        .review-card { 
+            border: 1px solid var(--border-light); 
+            padding: 10px; 
+            margin-bottom: 10px; 
+            border-radius: 4px; 
+            background: #fff; 
+        }
+        
+        .review-meta { 
+            display: grid; 
+            grid-template-columns: auto 1fr; 
+            gap: 4px 12px; 
+            font-size: 0.9em; 
+            color: var(--text-muted);
+        }
+        .review-meta-label { font-weight: 600; }
+        .review-meta-sep { grid-column: 1 / -1; border-top: 1px solid var(--border-light); margin: 4px 0; }
+
+        /* Collapsible sections */
+        .toggle-btn { 
+            cursor: pointer; 
+            color: var(--text-muted); 
+            font-weight: 600; 
+            font-size: 0.9em; 
+            background: none; 
+            border: none; 
+            padding: 0; 
+            font-family: inherit;
+        }
+        .toggle-btn:hover { color: var(--link); }
+        
+        .collapsible { display: none; margin-top: 6px; }
+        .collapsible.open { display: block; }
+
+        /* Code/Log blocks */
+        .log-block { 
+            background: var(--code-bg); 
+            color: var(--text);
+            padding: 8px; 
+            white-space: pre-wrap; 
+            font-family: inherit;
+            max-height: 400px; 
+            overflow-y: auto; 
+            border: 1px solid var(--code-border);
+            border-radius: 4px; 
+            font-size: 12px; 
+            line-height: 1.4;
+        }
+
+        /* Diff highlighting */
+        .diff-line { display: block; padding: 0 4px; min-height: 1.3em; }
+        .diff-added { background-color: #e6ffec; }
+        .diff-removed { background-color: #ffebe9; }
+        .diff-header { color: #005cc5; font-weight: bold; }
+
+        /* Thread tree */
+        .thread-tree { font-size: 0.95em; }
+        .thread-tree ul { list-style: none; padding-left: 0; margin: 0; }
+        .thread-tree li { margin-left: 16px; padding: 2px 0; }
+        .thread-tree .date { color: var(--text-muted); font-size: 0.9em; }
+        .thread-tree .current { font-weight: bold; background: #eef; }
+
+        /* Log viewer roles */
+        .log-entry { display: flex; border-bottom: 1px solid var(--border-light); padding: 4px 0; }
+        .log-entry:hover { background: var(--code-bg); }
+        .log-gutter { flex-shrink: 0; width: 60px; text-align: right; padding-right: 10px; font-weight: bold; font-size: 0.85em; color: var(--text-dim); }
+        .log-content { flex-grow: 1; min-width: 0; white-space: pre-wrap; word-break: break-word; }
+        .role-user .log-gutter { color: #005cc5; }
+        .role-model .log-gutter { color: var(--text); }
+        .role-tool .log-gutter { color: #6a737d; }
+        .role-tool .log-content { color: #6a737d; }
+        .fn-name { font-weight: bold; color: #6f42c1; }
+
+        /* Message view */
+        .message-meta { 
+            color: var(--text-muted); 
+            margin-bottom: 12px; 
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-light);
+        }
+        .message-meta div { margin-bottom: 2px; }
+        .message-meta .label { font-weight: 600; width: 50px; display: inline-block; }
+
+        pre.body {
+            background: var(--code-bg);
+            padding: 10px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            border: 1px solid var(--code-border);
+            border-radius: 4px;
+            margin: 0;
+        }
+
+        /* Keyboard hints */
+        .kbd-hint {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            color: #fff;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            opacity: 0.6;
+        }
+        .kbd-hint:hover { opacity: 1; }
+        kbd { 
+            background: rgba(255,255,255,0.2); 
+            padding: 1px 4px; 
+            border-radius: 2px;
+            margin: 0 2px;
+        }
+
+        /* Loading state */
+        .loading { color: var(--text-muted); padding: 20px; text-align: center; }
+        .error { color: #d73a49; padding: 20px; }
     </style>
 </head>
 <body>
-    <h1>Sashiko Patch Tracker</h1>
-
-    <div style="margin-top: 20px; margin-bottom: 20px; display: flex; gap: 10px;">
-        <input type="text" id="searchInput" placeholder="Search (subject, author:..., subject:..., date:...)" style="width: 450px; padding: 5px;">
-        <button onclick="triggerSearch()">Search</button>
-        <button onclick="clearSearch()">Clear</button>
+    <div id="app"></div>
+    
+    <div class="kbd-hint">
+        <kbd>/</kbd> search
+        <kbd>j</kbd><kbd>k</kbd> nav
+        <kbd>Enter</kbd> open
+        <kbd>q</kbd> back
     </div>
-
-    <div style="margin-top: 15px; margin-bottom: 10px;">
-        <button id="btn-patchsets" onclick="setMode('patchsets')" disabled>Patchsets</button>
-        <button id="btn-messages" onclick="setMode('messages')">Messages</button>
-    </div>
-
-    <table id="patchsets">
-        <thead id="table-head">
-            <tr>
-                <th>Subject</th>
-                <th>Author</th>
-                <th>Parts</th>
-                <th>Date</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody>
-            <!-- Rows will be inserted here -->
-        </tbody>
-    </table>
-    <div id="pagination" style="margin-top: 20px; text-align: center;">
-        <button id="firstBtn" onclick="goToPage(1)" disabled>First</button>
-        <button id="prevBtn" onclick="changePage(-1)" disabled>Previous</button>
-        <span id="pageInfo" style="margin: 0 10px;">Page 1 of ?</span>
-        <button id="nextBtn" onclick="changePage(1)">Next</button>
-        <button id="lastBtn" onclick="goToLast()" disabled>Last</button>
-    </div>
-
-    <div id="stats" style="margin-top: 30px; border-top: 1px solid #ccc; padding-top: 10px; font-size: 0.9em; color: #666;">Loading stats...</div>
 
     <script>
-        let currentPage = 1;
-        const perPage = 50;
-        let totalPages = 1;
-        let currentMode = 'patchsets'; // 'patchsets' or 'messages'
-        let currentQuery = '';
-        let selectedIndex = -1;
+        // =====================================================================
+        // STATE
+        // =====================================================================
+        const state = {
+            view: 'list',
+            listMode: 'patchsets',
+            currentPage: 1,
+            perPage: 50,
+            totalPages: 1,
+            searchQuery: '',
+            selectedIndex: -1,
+            stats: null
+        };
+
+        // =====================================================================
+        // ROUTER
+        // =====================================================================
+        function parseHash() {
+            const hash = window.location.hash || '#/';
+            if (hash === '#/' || hash === '#') {
+                return { view: 'list' };
+            }
+            const patchMatch = hash.match(/^#\/patchset\/(.+)$/);
+            if (patchMatch) {
+                return { view: 'patchset', id: decodeURIComponent(patchMatch[1]) };
+            }
+            const msgMatch = hash.match(/^#\/message\/(\d+)$/);
+            if (msgMatch) {
+                return { view: 'message', id: msgMatch[1] };
+            }
+            const logMatch = hash.match(/^#\/log\/(\d+)$/);
+            if (logMatch) {
+                return { view: 'log', id: logMatch[1] };
+            }
+            return { view: 'list' };
+        }
+
+        function navigate(hash) {
+            window.location.hash = hash;
+        }
+
+        function goBack() {
+            if (window.history.length > 1) {
+                window.history.back();
+            } else {
+                navigate('#/');
+            }
+        }
+
+        async function router() {
+            const route = parseHash();
+            state.view = route.view;
+            state.selectedIndex = -1;
+
+            const app = document.getElementById('app');
+            app.innerHTML = '<div class="loading">Loading...</div>';
+
+            try {
+                switch (route.view) {
+                    case 'list':
+                        await renderListView();
+                        break;
+                    case 'patchset':
+                        await renderPatchsetView(route.id);
+                        break;
+                    case 'message':
+                        await renderMessageView(route.id);
+                        break;
+                    case 'log':
+                        await renderLogView(route.id);
+                        break;
+                    default:
+                        await renderListView();
+                }
+            } catch (e) {
+                app.innerHTML = `<div class="error">Error: ${escapeHtml(e.message)}</div>`;
+            }
+        }
+
+        window.addEventListener('hashchange', router);
+
+        // =====================================================================
+        // UTILITIES
+        // =====================================================================
+        function escapeHtml(text, highlightDiff = false) {
+            if (!text) return '';
+            const escaped = String(text)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+            
+            if (highlightDiff) {
+                return escaped.split('\n').map(line => {
+                    let cls = 'diff-line';
+                    if (line.startsWith('+') && !line.startsWith('+++')) cls += ' diff-added';
+                    else if (line.startsWith('-') && !line.startsWith('--')) cls += ' diff-removed';
+                    else if (line.startsWith('@@') || line.startsWith('diff --git') || line.startsWith('--- ') || line.startsWith('+++ ')) cls += ' diff-header';
+                    return `<div class="${cls}">${line}</div>`;
+                }).join('');
+            }
+            return escaped;
+        }
+
+        function formatDate(unix, full = false) {
+            const d = new Date(unix * 1000);
+            return full ? d.toLocaleString() : d.toISOString().split('T')[0];
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                console.log('Copied:', text);
+            });
+        }
+
+        function toggleCollapsible(id, btn) {
+            const el = document.getElementById(id);
+            if (el.classList.contains('open')) {
+                el.classList.remove('open');
+                if (btn) btn.innerText = btn.innerText.replace('▼', '▶');
+            } else {
+                el.classList.add('open');
+                if (btn) btn.innerText = btn.innerText.replace('▶', '▼');
+            }
+        }
+
+        // =====================================================================
+        // LIST VIEW
+        // =====================================================================
+        async function renderListView() {
+            const app = document.getElementById('app');
+            
+            app.innerHTML = `
+                <h1>Sashiko</h1>
+                <div class="controls">
+                    <input type="text" id="searchInput" placeholder="Search (subject, author:, date:)" value="${escapeHtml(state.searchQuery)}">
+                    <button onclick="triggerSearch()">Search</button>
+                    <button onclick="clearSearch()">Clear</button>
+                    <span style="margin-left: auto;"></span>
+                    <button id="btn-patchsets" onclick="setListMode('patchsets')" class="${state.listMode === 'patchsets' ? 'active' : ''}">Patchsets</button>
+                    <button id="btn-messages" onclick="setListMode('messages')" class="${state.listMode === 'messages' ? 'active' : ''}">Messages</button>
+                </div>
+                <table id="dataTable">
+                    <thead id="tableHead"></thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+                <div class="pagination" id="pagination"></div>
+                <div class="stats" id="stats">Loading stats...</div>
+            `;
+
+            updateTableHeader();
+            await fetchListData();
+            fetchStats();
+            
+            document.getElementById('searchInput').addEventListener('keypress', e => {
+                if (e.key === 'Enter') triggerSearch();
+            });
+        }
+
+        function updateTableHeader() {
+            const thead = document.getElementById('tableHead');
+            if (!thead) return;
+            
+            if (state.listMode === 'patchsets') {
+                thead.innerHTML = `<tr><th>Subject</th><th style="width:120px">Author</th><th style="width:50px">Parts</th><th style="width:80px">Date</th><th style="width:80px">Status</th></tr>`;
+            } else {
+                thead.innerHTML = `<tr><th>Subject</th><th style="width:120px">Author</th><th style="width:80px">Date</th><th style="width:30px"></th></tr>`;
+            }
+        }
+
+        async function fetchListData() {
+            const endpoint = state.listMode === 'patchsets' ? '/api/patchsets' : '/api/messages';
+            let url = `${endpoint}?page=${state.currentPage}&per_page=${state.perPage}`;
+            if (state.searchQuery) {
+                url += `&q=${encodeURIComponent(state.searchQuery)}`;
+            }
+            
+            const res = await fetch(url);
+            const data = await res.json();
+            
+            const items = data.items || [];
+            const total = data.total || 0;
+            
+            state.totalPages = Math.ceil(total / state.perPage) || 1;
+            
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            
+            items.forEach((p, idx) => {
+                const row = document.createElement('tr');
+                const date = formatDate(p.date);
+                
+                if (state.listMode === 'patchsets') {
+                    const parts = (p.received_parts === p.total_parts && p.total_parts > 0)
+                        ? `${p.total_parts}`
+                        : `${p.received_parts || 0}/${p.total_parts || 0}`;
+                    
+                    row.onclick = (e) => {
+                        if (e.target.closest('.copy-btn')) return;
+                        navigate(`#/patchset/${encodeURIComponent(p.message_id || p.id)}`);
+                    };
+
+                    let tagsHtml = '';
+                    if (p.subsystems && Array.isArray(p.subsystems) && p.subsystems.length > 0) {
+                        tagsHtml = '<div style="margin-top:2px">' + p.subsystems.map(s => `<span class="tag">${escapeHtml(s)}</span>`).join('') + '</div>';
+                    }
+
+                    row.innerHTML = `
+                        <td>${escapeHtml(p.subject) || '(no subject)'}${tagsHtml}</td>
+                        <td>${escapeHtml(p.author) || 'unknown'}</td>
+                        <td>${parts}</td>
+                        <td>${date}</td>
+                        <td><span class="status-badge status-${p.status}">${p.status || 'Pending'}</span></td>
+                    `;
+                } else {
+                    row.onclick = (e) => {
+                        if (e.target.closest('.copy-btn')) return;
+                        navigate(`#/message/${p.id}`);
+                    };
+
+                    row.innerHTML = `
+                        <td>${escapeHtml(p.subject) || '(no subject)'}</td>
+                        <td>${escapeHtml(p.author) || 'unknown'}</td>
+                        <td>${date}</td>
+                        <td><button class="copy-btn" onclick="event.stopPropagation(); copyToClipboard('${escapeHtml(p.message_id)}')">📋</button></td>
+                    `;
+                }
+                tbody.appendChild(row);
+            });
+
+            updatePagination(total);
+        }
+
+        function updatePagination(total) {
+            const el = document.getElementById('pagination');
+            el.innerHTML = `
+                <button onclick="goToPage(1)" ${state.currentPage <= 1 ? 'disabled' : ''}>First</button>
+                <button onclick="changePage(-1)" ${state.currentPage <= 1 ? 'disabled' : ''}>Prev</button>
+                <span>Page ${state.currentPage} of ${state.totalPages} (${total} total)</span>
+                <button onclick="changePage(1)" ${state.currentPage >= state.totalPages ? 'disabled' : ''}>Next</button>
+                <button onclick="goToPage(${state.totalPages})" ${state.currentPage >= state.totalPages ? 'disabled' : ''}>Last</button>
+            `;
+        }
 
         async function fetchStats() {
-            const res = await fetch('/api/stats');
-            const data = await res.json();
-            const b = data.breakdown || {};
-            document.getElementById('stats').innerHTML = `
-                System Status: ${data.status} (v${data.version}) <br>
-                Messages: ${data.messages} | Patchsets: ${data.patchsets} <br>
-                <strong>Pending:</strong> ${b.pending || 0} | 
-                <strong>In Review:</strong> ${b.reviewing || 0} | 
-                <strong>Incomplete:</strong> ${b.incomplete || 0} | 
-                <strong>Reviewed:</strong> ${b.reviewed || 0} 
-                <span style="font-size: 0.8em; color: gray;">(Applied: ${b.applied || 0}, Failed: ${b.failed || 0})</span>
-            `;
+            try {
+                const res = await fetch('/api/stats');
+                const data = await res.json();
+                state.stats = data;
+                const b = data.breakdown || {};
+                document.getElementById('stats').innerHTML = `
+                    ${data.status} (v${data.version}) · 
+                    Msgs: ${data.messages} · Patches: ${data.patchsets} · 
+                    <b>Pending:</b> ${b.pending || 0} · 
+                    <b>Review:</b> ${b.reviewing || 0} · 
+                    <b>Done:</b> ${b.reviewed || 0}
+                    <span style="opacity:0.6">(Applied: ${b.applied || 0}, Failed: ${b.failed || 0}, Incomplete: ${b.incomplete || 0})</span>
+                `;
+            } catch (e) {
+                document.getElementById('stats').innerHTML = 'Stats unavailable';
+            }
         }
 
         function triggerSearch() {
             const input = document.getElementById('searchInput');
-            currentQuery = input.value.trim();
-            currentPage = 1;
-            fetchData();
+            state.searchQuery = input.value.trim();
+            state.currentPage = 1;
+            fetchListData();
         }
 
         function clearSearch() {
             document.getElementById('searchInput').value = '';
-            currentQuery = '';
-            currentPage = 1;
-            fetchData();
+            state.searchQuery = '';
+            state.currentPage = 1;
+            fetchListData();
         }
 
-        document.getElementById('searchInput').addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') {
-                triggerSearch();
+        function setListMode(mode) {
+            if (state.listMode === mode) return;
+            state.listMode = mode;
+            state.currentPage = 1;
+            document.getElementById('btn-patchsets').classList.toggle('active', mode === 'patchsets');
+            document.getElementById('btn-messages').classList.toggle('active', mode === 'messages');
+            updateTableHeader();
+            fetchListData();
+        }
+
+        async function changePage(delta) {
+            const newPage = state.currentPage + delta;
+            if (newPage < 1 || newPage > state.totalPages) return;
+            state.currentPage = newPage;
+            await fetchListData();
+        }
+
+        async function goToPage(page) {
+            if (page < 1 || page > state.totalPages) return;
+            state.currentPage = page;
+            await fetchListData();
+        }
+
+        // =====================================================================
+        // PATCHSET DETAIL VIEW
+        // =====================================================================
+        async function renderPatchsetView(id) {
+            const res = await fetch(`/api/patch?id=${encodeURIComponent(id)}`);
+            if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+            const data = await res.json();
+
+            const date = formatDate(data.date, true);
+            const patchMap = new Map();
+            if (data.patches) data.patches.forEach(p => patchMap.set(p.id, p));
+
+            const reviewsByPatch = new Map();
+            if (data.patches) data.patches.forEach(p => reviewsByPatch.set(p.id, []));
+            reviewsByPatch.set(null, []);
+            if (data.reviews) {
+                data.reviews.forEach(r => {
+                    const pid = r.patch_id || null;
+                    if (!reviewsByPatch.has(pid)) reviewsByPatch.set(pid, []);
+                    reviewsByPatch.get(pid).push(r);
+                });
+            }
+
+            let reviewsHtml = '';
+            const renderReviewList = (reviews) => {
+                if (!reviews || reviews.length === 0) return '<p style="font-style:italic; color:#888;">No reviews yet.</p>';
+                return reviews.map(r => renderReviewCard(r)).join('');
+            };
+
+            const generalReviews = reviewsByPatch.get(null) || [];
+            if (generalReviews.length > 0) {
+                reviewsHtml += `<h3>General Reviews</h3>${renderReviewList(generalReviews)}`;
+            }
+
+            const sortedPatchIds = Array.from(reviewsByPatch.keys())
+                .filter(id => id !== null)
+                .sort((a, b) => {
+                    const pa = patchMap.get(a);
+                    const pb = patchMap.get(b);
+                    return (pa?.part_index || 0) - (pb?.part_index || 0);
+                });
+
+            sortedPatchIds.forEach(pid => {
+                const patch = patchMap.get(pid);
+                const reviews = reviewsByPatch.get(pid);
+                let header = patch 
+                    ? `Patch ${patch.part_index}: <a href="#/message/${patch.msg_db_id}">${escapeHtml(patch.subject || '(no subject)')}</a>`
+                    : `Patch ID ${pid}`;
+                
+                let totalTokens = 0;
+                reviews.forEach(r => totalTokens += (r.tokens_in || 0) + (r.tokens_out || 0));
+
+                reviewsHtml += `
+                    <div style="margin-top:12px; border-top:1px solid #eee; padding-top:8px;">
+                        <h3 style="display:flex; justify-content:space-between;">
+                            <span>${header}</span>
+                            <span style="font-size:0.8em; font-weight:normal; color:#888;">Tokens: ${totalTokens.toLocaleString()}</span>
+                        </h3>
+                        ${renderReviewList(reviews)}
+                    </div>
+                `;
+            });
+
+            if (!reviewsHtml) reviewsHtml = '<p>No AI reviews yet.</p>';
+
+            const threadHtml = renderThreadTree(data.thread);
+            const subsystemsHtml = data.subsystems?.length > 0 
+                ? data.subsystems.map(s => `<span class="tag">${escapeHtml(s)}</span>`).join('') 
+                : '-';
+
+            document.getElementById('app').innerHTML = `
+                <div class="nav"><a href="#/" onclick="event.preventDefault(); goBack();">← Back</a></div>
+                <h1>
+                    <span>${escapeHtml(data.subject) || '(no subject)'}</span>
+                    <span class="status-badge status-${data.status}">${data.status || 'Pending'}</span>
+                </h1>
+                
+                <div class="section">
+                    <div class="kv"><div class="label">Author:</div><div>${escapeHtml(data.author) || 'unknown'}</div></div>
+                    <div class="kv"><div class="label">Date:</div><div>${date}</div></div>
+                    <div class="kv"><div class="label">Subsystems:</div><div>${subsystemsHtml}</div></div>
+                    <div class="kv"><div class="label">Patches:</div><div>${data.received_parts || 0} / ${data.total_parts || 0}</div></div>
+                </div>
+                
+                <div class="section">
+                    <h2>Thread</h2>
+                    ${threadHtml}
+                </div>
+                
+                <div class="section">
+                    <h2>AI Reviews</h2>
+                    ${reviewsHtml}
+                </div>
+            `;
+        }
+
+        function renderReviewCard(r) {
+            const rDate = r.created_at ? formatDate(r.created_at, true) : '-';
+            const providerModel = `${r.provider || '?'}/${r.model || '?'}`;
+            const uniqueId = Math.random().toString(36).substr(2, 9);
+
+            let regressionCount = 0, hasRegressions = false, statusText = r.result || 'Finished', traceHtml = '';
+
+            try {
+                if (r.output) {
+                    const outputJson = JSON.parse(r.output);
+                    if (outputJson.findings?.length) {
+                        regressionCount = outputJson.findings.length;
+                        hasRegressions = true;
+                    } else if (outputJson.regressions?.length) {
+                        regressionCount = outputJson.regressions.length;
+                        hasRegressions = true;
+                    }
+                    if (outputJson.analysis_trace?.length) {
+                        const traceId = `trace-${uniqueId}`;
+                        const entries = outputJson.analysis_trace.map((t, i) => {
+                            let content = typeof t === 'string' ? t : (t.step && t.thought ? `Step ${t.step}: ${t.thought}` : JSON.stringify(t, null, 2));
+                            return `<div>${i + 1}) ${escapeHtml(content)}</div>`;
+                        }).join('');
+                        traceHtml = `
+                            <div style="margin-top:8px;">
+                                <button class="toggle-btn" onclick="toggleCollapsible('${traceId}', this)">▶ Reasoning</button>
+                                <div id="${traceId}" class="collapsible">
+                                    <div class="log-block" style="max-height:200px;">${entries}</div>
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+            } catch (e) {}
+
+            if (statusText === "Review completed successfully.") {
+                statusText = hasRegressions ? `${regressionCount} potential regressions` : 'No regressions';
+            }
+
+            let resultStyle = hasRegressions ? 'color:#d32f2f;font-weight:bold;' 
+                : statusText.includes('No regressions') ? 'color:#2e7d32;font-weight:bold;' : '';
+
+            let baselineStr = '-';
+            if (r.baseline) {
+                const parts = [];
+                if (r.baseline.branch) parts.push(r.baseline.branch);
+                if (r.baseline.commit) parts.push(r.baseline.commit.substring(0, 8));
+                baselineStr = parts.join(' / ');
+            }
+
+            let inlineHtml = '';
+            if (r.inline_review) {
+                const isOpen = hasRegressions ? 'open' : '';
+                const icon = hasRegressions ? '▼' : '▶';
+                inlineHtml = `
+                    <div style="margin-top:8px;">
+                        <button class="toggle-btn" onclick="toggleCollapsible('inline-${uniqueId}', this)">${icon} Inline Review</button>
+                        <div id="inline-${uniqueId}" class="collapsible ${isOpen}">
+                            <div class="log-block">${escapeHtml(r.inline_review, true)}</div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="review-card">
+                    <div class="review-meta">
+                        <div class="review-meta-label">Date:</div>
+                        <div style="display:flex; justify-content:space-between;">
+                            <span>${rDate}</span>
+                            <span class="status-badge status-${r.status?.split(' ')[0] || 'Finished'}">${r.status || 'Finished'}</span>
+                        </div>
+                        <div class="review-meta-label">Baseline:</div><div>${baselineStr}</div>
+                        <div class="review-meta-label">Model:</div><div>${providerModel}</div>
+                        <div class="review-meta-sep"></div>
+                        <div class="review-meta-label">Result:</div><div style="${resultStyle}">${escapeHtml(statusText)}</div>
+                    </div>
+                    ${inlineHtml}
+                    ${traceHtml}
+                    <div style="margin-top:8px;"><a href="#/log/${r.id}" class="toggle-btn">View Raw Log</a></div>
+                </div>
+            `;
+        }
+
+        function renderThreadTree(thread) {
+            if (!thread || thread.length === 0) return '<p style="font-style:italic; color:#888;">No thread history.</p>';
+
+            const msgMap = new Map();
+            const childrenMap = new Map();
+            thread.forEach(m => {
+                msgMap.set(m.message_id, m);
+                childrenMap.set(m.message_id, []);
+            });
+
+            const roots = [];
+            thread.forEach(m => {
+                const parentId = m.in_reply_to;
+                if (parentId && msgMap.has(parentId)) {
+                    childrenMap.get(parentId).push(m);
+                } else {
+                    roots.push(m);
+                }
+            });
+
+            let html = '<div class="thread-tree"><ul>';
+            function renderNode(m, depth) {
+                const mDate = m.date ? formatDate(m.date) : '-';
+                const arrow = depth > 0 ? '↳ ' : '';
+                html += `<li>${arrow}<span class="date">[${mDate}]</span> ${escapeHtml((m.author || 'unknown').trim())}: <a href="#/message/${m.id}">${escapeHtml(m.subject || '(no subject)')}</a>`;
+                const children = childrenMap.get(m.message_id) || [];
+                if (children.length > 0) {
+                    html += '<ul>';
+                    children.forEach(c => renderNode(c, depth + 1));
+                    html += '</ul>';
+                }
+                html += '</li>';
+            }
+            roots.forEach(r => renderNode(r, 0));
+            html += '</ul></div>';
+            return html;
+        }
+
+        // =====================================================================
+        // MESSAGE VIEW
+        // =====================================================================
+        async function renderMessageView(id) {
+            const res = await fetch(`/api/message?id=${id}`);
+            if (!res.ok) throw new Error('Message not found');
+            const data = await res.json();
+
+            document.title = `Sashiko - ${data.subject}`;
+            const date = formatDate(data.date, true);
+            const threadHtml = data.thread?.length > 0 ? renderThreadTreeWithCurrent(data.thread, data.id) : '';
+
+            document.getElementById('app').innerHTML = `
+                <div class="nav"><a href="#/" onclick="event.preventDefault(); goBack();">← Back</a></div>
+                <h1>${escapeHtml(data.subject) || '(no subject)'}</h1>
+                
+                <div class="message-meta">
+                    <div><span class="label">From:</span> ${escapeHtml(data.author) || 'unknown'}</div>
+                    <div><span class="label">To:</span> ${escapeHtml(data.to) || '-'}</div>
+                    <div><span class="label">Cc:</span> ${escapeHtml(data.cc) || '-'}</div>
+                    <div><span class="label">Date:</span> ${date}</div>
+                    <div><span class="label">ID:</span> ${escapeHtml(data.message_id)} <button class="copy-btn" onclick="copyToClipboard('${escapeHtml(data.message_id)}')">Copy</button></div>
+                </div>
+                
+                ${threadHtml ? `<div class="section"><h2>Thread</h2>${threadHtml}</div>` : ''}
+                
+                <pre class="body">${escapeHtml(`Subject: ${data.subject || '(no subject)'}\n\n${data.body || '(no body)'}`, true)}</pre>
+            `;
+        }
+
+        function renderThreadTreeWithCurrent(thread, currentId) {
+            if (!thread || thread.length === 0) return '';
+
+            const msgMap = new Map();
+            const childrenMap = new Map();
+            thread.forEach(m => {
+                msgMap.set(m.message_id, m);
+                childrenMap.set(m.message_id, []);
+            });
+
+            const roots = [];
+            thread.forEach(m => {
+                const parentId = m.in_reply_to;
+                if (parentId && msgMap.has(parentId)) {
+                    childrenMap.get(parentId).push(m);
+                } else {
+                    roots.push(m);
+                }
+            });
+
+            let html = '<div class="thread-tree"><ul>';
+            function renderNode(m, depth) {
+                const mDate = m.date ? formatDate(m.date) : '-';
+                const arrow = depth > 0 ? '↳ ' : '';
+                const isCurrent = m.id === currentId;
+                const style = isCurrent ? 'class="current"' : '';
+                html += `<li>${arrow}<span class="date">[${mDate}]</span> ${escapeHtml((m.author || 'unknown').trim())}: <a href="#/message/${m.id}" ${style}>${escapeHtml(m.subject || '(no subject)')}</a>`;
+                const children = childrenMap.get(m.message_id) || [];
+                if (children.length > 0) {
+                    html += '<ul>';
+                    children.forEach(c => renderNode(c, depth + 1));
+                    html += '</ul>';
+                }
+                html += '</li>';
+            }
+            roots.forEach(r => renderNode(r, 0));
+            html += '</ul></div>';
+            return html;
+        }
+
+        // =====================================================================
+        // LOG VIEW
+        // =====================================================================
+        async function renderLogView(id) {
+            const res = await fetch(`/api/review?id=${id}`);
+            if (!res.ok) throw new Error('Review not found');
+            const data = await res.json();
+
+            const totalTokens = (data.tokens_in || 0) + (data.tokens_out || 0);
+            let logs = [];
+            try { logs = JSON.parse(data.logs || '[]'); } catch (e) {}
+
+            let logsHtml = '';
+            if (!logs.length) {
+                logsHtml = '<div style="padding:20px; text-align:center; color:#888;">No logs recorded.</div>';
+            } else {
+                logsHtml = logs.map(entry => {
+                    const role = (entry.role || 'unknown').toLowerCase();
+                    const parts = entry.parts || [];
+                    let rowClass = 'log-entry';
+                    if (role === 'user') rowClass += ' role-user';
+                    else if (role === 'model') rowClass += ' role-model';
+                    else rowClass += ' role-tool';
+
+                    let label = role === 'model' ? 'LLM' : role === 'tool' || role === 'function' ? 'TOOL' : role.toUpperCase();
+                    
+                    let content = '';
+                    parts.forEach(part => {
+                        if (part.text) {
+                            content += `<div>${escapeHtml(part.text)}</div>`;
+                        } else if (part.functionCall || part.function_call) {
+                            const fc = part.functionCall || part.function_call;
+                            const args = formatFuncArgs(fc.args);
+                            content += `<div><span class="fn-name">${escapeHtml(fc.name)}</span>(${escapeHtml(args)})</div>`;
+                        } else if (part.functionResponse || part.function_response) {
+                            const fr = part.functionResponse || part.function_response;
+                            const respStr = JSON.stringify(fr.response);
+                            const display = respStr.length > 100 ? respStr.substring(0, 97) + '...' : respStr;
+                            content += `<div><span style="opacity:0.6">→ ${escapeHtml(fr.name)}:</span> ${escapeHtml(display)}</div>`;
+                        }
+                    });
+
+                    return `<div class="${rowClass}"><div class="log-gutter">${label}</div><div class="log-content">${content}</div></div>`;
+                }).join('');
+            }
+
+            document.getElementById('app').innerHTML = `
+                <div class="nav"><a href="#/" onclick="event.preventDefault(); goBack();">← Back</a></div>
+                <h1>
+                    <span>Interaction Log</span>
+                    <span style="font-size:0.7em; font-weight:normal; color:#888;">
+                        ${data.model || '?'} · ${totalTokens} tokens · 
+                        <span class="status-badge status-${data.status}">${data.status}</span>
+                    </span>
+                </h1>
+                <div>${logsHtml}</div>
+            `;
+        }
+
+        function formatFuncArgs(args) {
+            if (typeof args === 'string') { try { args = JSON.parse(args); } catch(e) { return args; } }
+            if (!args || typeof args !== 'object') return '';
+            return Object.entries(args).map(([k, v]) => {
+                let valStr = JSON.stringify(v);
+                if (valStr?.length > 40) valStr = valStr.substring(0, 37) + '...';
+                return `${k}=${valStr}`;
+            }).join(', ');
+        }
+
+        // =====================================================================
+        // KEYBOARD NAVIGATION
+        // =====================================================================
+        document.addEventListener('keydown', (e) => {
+            const activeEl = document.activeElement;
+            const isInputFocused = activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA';
+
+            // Escape blurs inputs
+            if (e.key === 'Escape' && isInputFocused) {
+                activeEl.blur();
+                return;
+            }
+
+            // If input is focused, don't handle other keys
+            if (isInputFocused) return;
+
+            // Focus search with /
+            if (e.key === '/' && state.view === 'list') {
+                e.preventDefault();
+                const input = document.getElementById('searchInput');
+                if (input) { input.focus(); input.select(); }
+                return;
+            }
+
+            // List view navigation
+            if (state.view === 'list') {
+                const rows = document.querySelectorAll('#dataTable tbody tr');
+                
+                if (e.key === 'j' || e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    state.selectedIndex = Math.min(state.selectedIndex + 1, rows.length - 1);
+                    updateRowSelection(rows);
+                } else if (e.key === 'k' || e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    state.selectedIndex = Math.max(state.selectedIndex - 1, 0);
+                    updateRowSelection(rows);
+                } else if ((e.key === 'Enter' || e.key === 'o') && state.selectedIndex >= 0 && rows[state.selectedIndex]) {
+                    e.preventDefault();
+                    rows[state.selectedIndex].click();
+                } else if (e.key === 'l' || e.key === 'ArrowRight') {
+                    if (state.currentPage < state.totalPages) changePage(1);
+                } else if (e.key === 'h' || e.key === 'ArrowLeft') {
+                    if (state.currentPage > 1) changePage(-1);
+                } else if (e.key === '1') {
+                    setListMode('patchsets');
+                } else if (e.key === '2') {
+                    setListMode('messages');
+                }
+            } else {
+                // Detail views: scroll and back
+                if (e.key === 'j' || (e.ctrlKey && e.key === 'n')) {
+                    window.scrollBy(0, 60);
+                } else if (e.key === 'k' || (e.ctrlKey && e.key === 'p')) {
+                    window.scrollBy(0, -60);
+                } else if (e.key === 'q' || e.key === 'Backspace' || (e.key === 'h' && state.view !== 'list')) {
+                    e.preventDefault();
+                    goBack();
+                } else if (e.key === 'g') {
+                    // gg = go to top (wait for second g)
+                    window.scrollTo(0, 0);
+                } else if (e.key === 'G') {
+                    window.scrollTo(0, document.body.scrollHeight);
+                }
             }
         });
 
-        // Keyboard Navigation
-        function updateSelection() {
-            const rows = document.querySelectorAll('#patchsets tbody tr');
-            if (rows.length === 0) return;
-            
-            // Clamp index
-            if (selectedIndex < 0) selectedIndex = 0;
-            if (selectedIndex >= rows.length) selectedIndex = rows.length - 1;
-
+        function updateRowSelection(rows) {
             rows.forEach((r, i) => {
-                if (i === selectedIndex) {
+                if (i === state.selectedIndex) {
                     r.classList.add('selected');
                     r.scrollIntoView({ block: 'nearest' });
                 } else {
@@ -137,190 +1034,10 @@
             });
         }
 
-        document.addEventListener('keydown', (e) => {
-            // Ignore if input is focused
-            if (document.activeElement.tagName === 'INPUT') {
-                if (e.key === 'Escape') {
-                    document.activeElement.blur();
-                }
-                return;
-            }
-
-            const rows = document.querySelectorAll('#patchsets tbody tr');
-            // If no rows, we can still allow search focus
-            
-            if (e.key === '/') {
-                e.preventDefault();
-                const input = document.getElementById('searchInput');
-                input.focus();
-                input.select();
-                return;
-            }
-
-            if (rows.length === 0) return;
-
-            // Navigation / Scrolling
-            if (e.key === 'j' || e.key === 'ArrowDown' || (e.ctrlKey && e.key === 'n')) {
-                e.preventDefault();
-                selectedIndex++;
-                if (selectedIndex >= rows.length) selectedIndex = rows.length - 1;
-                updateSelection();
-            } else if (e.key === 'k' || e.key === 'ArrowUp' || (e.ctrlKey && e.key === 'p')) {
-                e.preventDefault();
-                selectedIndex--;
-                if (selectedIndex < 0) selectedIndex = 0;
-                updateSelection();
-            } else if (e.key === 'Enter' || e.key === 'o') {
-                e.preventDefault();
-                if (selectedIndex >= 0 && selectedIndex < rows.length) {
-                    rows[selectedIndex].click();
-                }
-            } else if (e.key === 'l' || e.key === 'ArrowRight') {
-                if (currentPage < totalPages) changePage(1);
-            } else if (e.key === 'h' || e.key === 'ArrowLeft') {
-                if (currentPage > 1) changePage(-1);
-            }
-        });
-
-
-        function copyToClipboard(text) {
-            navigator.clipboard.writeText(text).then(() => {
-                console.log('Copied to clipboard:', text);
-            });
-        }
-
-        function setMode(mode) {
-            if (currentMode === mode) return;
-            currentMode = mode;
-            currentPage = 1;
-            
-            document.getElementById('btn-patchsets').disabled = (mode === 'patchsets');
-            document.getElementById('btn-messages').disabled = (mode === 'messages');
-
-            updateTableHeader();
-            fetchData();
-        }
-
-        function updateTableHeader() {
-            const thead = document.getElementById('table-head');
-            if (currentMode === 'patchsets') {
-                thead.innerHTML = `
-                    <tr>
-                        <th>Subject</th>
-                        <th>Author</th>
-                        <th>Parts</th>
-                        <th>Date</th>
-                        <th>Status</th>
-                    </tr>
-                `;
-            } else {
-                thead.innerHTML = `
-                    <tr>
-                        <th>Subject</th>
-                        <th>Author</th>
-                        <th>Date</th>
-                        <th></th>
-                    </tr>
-                `;
-            }
-        }
-
-        async function changePage(delta) {
-            const newPage = currentPage + delta;
-            if (newPage < 1 || newPage > totalPages) return;
-            currentPage = newPage;
-            await fetchData();
-        }
-
-        async function goToPage(page) {
-            if (page < 1 || page > totalPages) return;
-            currentPage = page;
-            await fetchData();
-        }
-
-        async function goToLast() {
-            currentPage = totalPages;
-            await fetchData();
-        }
-
-        async function fetchData() {
-            const endpoint = currentMode === 'patchsets' ? '/api/patchsets' : '/api/messages';
-            let url = `${endpoint}?page=${currentPage}&per_page=${perPage}`;
-            if (currentQuery) {
-                url += `&q=${encodeURIComponent(currentQuery)}`;
-            }
-            const res = await fetch(url);
-            const data = await res.json();
-            
-            const items = data.items || [];
-            const total = data.total || 0;
-            
-            totalPages = Math.ceil(total / perPage);
-            if (totalPages === 0) totalPages = 1;
-
-            const tbody = document.querySelector('#patchsets tbody');
-            tbody.innerHTML = '';
-            selectedIndex = -1;
-            
-            document.getElementById('firstBtn').disabled = currentPage <= 1;
-            document.getElementById('prevBtn').disabled = currentPage <= 1;
-            document.getElementById('nextBtn').disabled = currentPage >= totalPages;
-            document.getElementById('lastBtn').disabled = currentPage >= totalPages;
-            document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages} (${total} total)`;
-
-            items.forEach(p => {
-                const row = document.createElement('tr');
-                const date = new Date(p.date * 1000).toISOString().split('T')[0];
-                
-                if (currentMode === 'patchsets') {
-                    const parts = (p.received_parts === p.total_parts && p.total_parts > 0)
-                        ? `${p.total_parts}`
-                        : `${p.received_parts || 0}/${p.total_parts || 0}`;
-                    
-                    row.onclick = (e) => {
-                        if (e.target.closest('.copy-btn')) return;
-                        const linkId = encodeURIComponent(p.message_id || p.id);
-                        window.location.href = `/static/details.html?id=${linkId}`;
-                    };
-                    row.style.cursor = 'pointer';
-
-                    let tagsHtml = '';
-                    if (p.subsystems && Array.isArray(p.subsystems) && p.subsystems.length > 0) {
-                        tagsHtml = '<div style="margin-top: 4px;">' + p.subsystems.map(s => `<span class="tag">${s}</span>`).join('') + '</div>';
-                    } else {
-                        // Debugging: why empty?
-                        // console.log('No subsystems for', p.id, p.subsystems);
-                    }
-
-                    row.innerHTML = `
-                        <td>${p.subject || '(no subject)'}${tagsHtml}</td>
-                        <td>${p.author || 'unknown'}</td>
-                        <td>${parts}</td>
-                        <td>${date}</td>
-                        <td><span class="status-${p.status} status-badge">${p.status || 'Pending'}</span></td>
-                    `;
-                } else {
-                    // Messages mode
-                    row.onclick = (e) => {
-                        if (e.target.closest('.copy-btn')) return;
-                        window.location.href = `/static/message.html?id=${p.id}`;
-                    };
-                    row.style.cursor = 'pointer';
-
-                    row.innerHTML = `
-                        <td>${p.subject || '(no subject)'}</td>
-                        <td>${p.author || 'unknown'}</td>
-                        <td>${date}</td>
-                        <td style="text-align: right;"><button class="copy-btn" onclick="copyToClipboard('${p.message_id}')">📋</button></td>
-                    `;
-                }
-                tbody.appendChild(row);
-            });
-        }
-
-        fetchStats();
-        // Initial load
-        fetchData();
+        // =====================================================================
+        // INIT
+        // =====================================================================
+        router();
     </script>
 </body>
 </html>
