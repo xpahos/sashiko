@@ -431,14 +431,18 @@ impl ToolBox {
         let path_str = args["path"].as_str().unwrap_or(".");
         let context_lines = args["context_lines"].as_u64().unwrap_or(0);
 
-        let path = self.validate_path(path_str, &self.worktree_path)?;
+        // Validate path security but use relative path for grep to ensure clean output
+        let _ = self.validate_path(path_str, &self.worktree_path)?;
 
         let mut cmd = Command::new("grep");
         cmd.current_dir(&self.worktree_path)
             .arg("-rnI") // Recursive, line numbers, skip binary
             .arg(format!("-C{}", context_lines))
-            .arg(pattern)
-            .arg(path);
+            .arg(pattern);
+
+        if path_str != "." {
+            cmd.arg(path_str);
+        }
 
         let output = cmd.output().await?;
 

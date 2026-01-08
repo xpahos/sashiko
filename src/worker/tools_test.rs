@@ -96,4 +96,30 @@ mod tests {
         let written_content = std::fs::read_to_string(worktree_path.join(filename)).unwrap();
         assert_eq!(written_content, content);
     }
+
+    #[test]
+    fn test_search_file_content_relative_path() {
+        let (linux_path, _prompts_path) = get_test_paths();
+        let toolbox = ToolBox::new(linux_path);
+        let rt = Runtime::new().unwrap();
+
+        // Search for "Linux kernel" which should be in README
+        let args = json!({
+            "pattern": "Linux kernel",
+            "path": "."
+        });
+
+        let result = rt.block_on(toolbox.call("search_file_content", args)).unwrap();
+        let content = result["content"].as_str().unwrap();
+
+        assert!(!content.is_empty());
+        // Verify path is relative (does not start with /)
+        // Check that no line starts with /
+        for line in content.lines() {
+             assert!(!line.starts_with("/"), "Line starts with absolute path: {}", line);
+        }
+        
+        // Check if README matches are found (it might not be the first match)
+        assert!(content.contains("README") || content.contains("./README"));
+    }
 }
