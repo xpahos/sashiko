@@ -1256,8 +1256,9 @@
                             content += `<div>${escapeHtml(part.text)}</div>`;
                         } else if (part.functionCall || part.function_call) {
                             const fc = part.functionCall || part.function_call;
-                            const argsHtml = formatFuncArgsExpandable(fc.args, jsonCounter++);
-                            content += `<div><span class="fn-name">${escapeHtml(fc.name)}</span>(${argsHtml})</div>`;
+                            const callId = jsonCounter++;
+                            const callHtml = formatFuncCallExpandable(fc.name, fc.args, callId);
+                            content += callHtml;
                         } else if (part.functionResponse || part.function_response) {
                             const fr = part.functionResponse || part.function_response;
                             const respHtml = formatJsonExpandable(fr.response, jsonCounter++);
@@ -1280,6 +1281,99 @@
                 </h1>
                 <div>${logsHtml}</div>
             `;
+        }
+
+        // Custom preview formatters for common tools
+        function getToolPreview(name, args) {
+            try {
+                switch (name) {
+                    case 'read_files': {
+                        const files = args.files || [];
+                        const mode = args.mode || 'raw';
+                        const fileStrs = files.map(f => {
+                            let s = `"${f.path}"`;
+                            if (f.start_line || f.end_line) {
+                                s += `::${f.start_line || ''}..${f.end_line || ''}`;
+                            }
+                            return s;
+                        });
+                        const filesPreview = fileStrs.length > 3 ? fileStrs.slice(0, 3).join(', ') + `, +${fileStrs.length - 3}` : fileStrs.join(', ');
+                        return mode !== 'raw' ? `${filesPreview}, mode=${mode}` : filesPreview;
+                    }
+                    case 'git_blame': {
+                        let s = `"${args.path}"`;
+                        if (args.start_line || args.end_line) {
+                            s += `::${args.start_line || ''}..${args.end_line || ''}`;
+                        }
+                        return s;
+                    }
+                    case 'git_diff': {
+                        const diffArgs = args.args || [];
+                        return diffArgs.map(a => `"${a}"`).join(' ');
+                    }
+                    case 'git_show': {
+                        let s = `"${args.object}"`;
+                        if (args.suppress_diff) s += ', no-diff';
+                        if (args.start_line || args.end_line) {
+                            s += `::${args.start_line || ''}..${args.end_line || ''}`;
+                        }
+                        return s;
+                    }
+                    case 'list_dir':
+                        return `"${args.path}"`;
+                    case 'write_file': {
+                        const contentLen = (args.content || '').length;
+                        return `"${args.path}", ${formatSize(contentLen)} content`;
+                    }
+                    case 'search_file_content': {
+                        let s = `/${args.pattern}/`;
+                        if (args.path && args.path !== '.') s += ` in "${args.path}"`;
+                        if (args.context_lines) s += ` ±${args.context_lines}`;
+                        return s;
+                    }
+                    case 'find_files': {
+                        let s = `"${args.pattern}"`;
+                        if (args.path && args.path !== '.') s += ` in "${args.path}"`;
+                        return s;
+                    }
+                    default:
+                        return null;
+                }
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function formatFuncCallExpandable(name, args, id) {
+            if (typeof args === 'string') { try { args = JSON.parse(args); } catch (e) { } }
+            if (!args || typeof args !== 'object') {
+                return `<div><span class="fn-name">${escapeHtml(name)}</span>()</div>`;
+            }
+
+            let entries = Object.entries(args);
+            if (entries.length === 0) {
+                return `<div><span class="fn-name">${escapeHtml(name)}</span>()</div>`;
+            }
+
+            // Try custom preview first
+            let preview = getToolPreview(name, args);
+            if (!preview) {
+                if (typeof sortToolArgs === 'function') {
+                    entries = sortToolArgs(entries);
+                }
+                preview = entries.map(([k, v]) => {
+                    let valStr = JSON.stringify(v);
+                    if (valStr?.length > 40) valStr = valStr.substring(0, 37) + '...';
+                    return `${k}=${valStr}`;
+                }).join(', ');
+            }
+
+            const fullJson = JSON.stringify(args, null, 2);
+            const argsSize = formatSize(fullJson.length);
+
+            const expandId = `json-call-${id}`;
+            const shortPreview = preview.length > 80 ? preview.substring(0, 77) + '...' : preview;
+            return `<div class="json-expandable" onclick="toggleJsonExpand('${expandId}')"><span class="fn-name">${escapeHtml(name)}</span>(<span class="json-preview">${escapeHtml(shortPreview)}</span>) <span class="json-size">(${argsSize})</span><pre id="${expandId}" class="json-formatted" style="display:none">${formatJsonPretty(args)}</pre></div>`;
         }
 
         function formatFuncArgsExpandable(args, id) {
