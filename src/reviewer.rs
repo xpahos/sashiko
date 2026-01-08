@@ -242,7 +242,6 @@ impl Reviewer {
                 let candidates =
                     baseline_registry.resolve_candidates(&all_files, &subject, body.as_deref());
 
-                let mut final_status = ReviewStatus::Reviewed.as_str().to_string(); // Assume success unless failure
                 let repo_path = PathBuf::from(&settings.git.repository_path);
 
                 // We only use the FIRST candidate for now (simplification) or loop?
@@ -436,8 +435,6 @@ impl Reviewer {
                                                 );
                                                 continue;
                                             } else {
-                                                final_status =
-                                                    ReviewStatus::Failed.as_str().to_string();
                                                 break;
                                             }
                                         } else if let Some(review_content) =
@@ -512,8 +509,6 @@ impl Reviewer {
                                                     );
                                                     continue;
                                                 } else {
-                                                    final_status =
-                                                        ReviewStatus::Failed.as_str().to_string();
                                                     break;
                                                 }
                                             }
@@ -547,9 +542,7 @@ impl Reviewer {
                                                 );
                                                 continue;
                                             }
-                                            final_status =
-                                                ReviewStatus::Failed.as_str().to_string();
-                                            break;
+
                                         }
                                     } else {
                                         // Patch application failed
@@ -579,8 +572,7 @@ impl Reviewer {
                                             .await;
 
                                         candidate_success = false;
-                                        final_status = ReviewStatus::Failed.as_str().to_string();
-                                        break;
+                                                                                    break;
                                     }
                                 }
                                 Err(e) => {
@@ -606,7 +598,6 @@ impl Reviewer {
                                         continue;
                                     }
                                     candidate_success = false;
-                                    final_status = ReviewStatus::Failed.as_str().to_string();
                                     break;
                                 }
                             }
@@ -623,10 +614,11 @@ impl Reviewer {
                     }
                 }
 
-                if !review_success && final_status == ReviewStatus::Reviewed.as_str() {
-                    // If we didn't succeed with any candidate, set to Failed
-                    final_status = ReviewStatus::Failed.as_str().to_string();
-                }
+                let final_status = if review_success {
+                    ReviewStatus::Reviewed.as_str().to_string()
+                } else {
+                    ReviewStatus::Failed.as_str().to_string()
+                };
 
                 info!(
                     "Review process finished for {}: {}",
