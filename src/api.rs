@@ -259,11 +259,12 @@ async fn get_stats(State(state): State<Arc<AppState>>) -> Json<serde_json::Value
         .unwrap_or_default();
 
     let pending = *counts.get("Pending").unwrap_or(&0);
-    let reviewing = *counts.get("Reviewing").unwrap_or(&0);
-    let applied = *counts.get("Applied").unwrap_or(&0);
+    let applying = *counts.get("Applying").unwrap_or(&0);
+    let reviewing = *counts.get("In Review").unwrap_or(&0); // DB uses "In Review"
+    let reviewed = *counts.get("Reviewed").unwrap_or(&0);
     let failed = *counts.get("Failed").unwrap_or(&0);
     let incomplete = *counts.get("Incomplete").unwrap_or(&0);
-    let reviewed = applied + failed;
+    let cancelled = *counts.get("Cancelled").unwrap_or(&0);
 
     Json(serde_json::json!({
         "status": "ok",
@@ -272,11 +273,12 @@ async fn get_stats(State(state): State<Arc<AppState>>) -> Json<serde_json::Value
         "patchsets": patchsets,
         "breakdown": {
             "pending": pending,
+            "applying": applying,
             "reviewing": reviewing,
             "reviewed": reviewed,
-            "applied": applied,
             "failed": failed,
-            "incomplete": incomplete
+            "incomplete": incomplete,
+            "cancelled": cancelled
         }
     }))
 }

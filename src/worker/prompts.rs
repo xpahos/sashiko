@@ -90,7 +90,7 @@ impl PromptRegistry {
         context.push_str("\n\n");
 
         // 2. Review protocol (review-core.md)
-	context.push_str("# review-code.md\n\n");
+        context.push_str("# review-code.md\n\n");
         let core_path = self.base_dir.join("review-core.md");
         if core_path.exists() {
             context.push_str(&fs::read_to_string(&core_path).await?);

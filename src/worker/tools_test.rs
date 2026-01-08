@@ -109,16 +109,22 @@ mod tests {
             "path": "."
         });
 
-        let result = rt.block_on(toolbox.call("search_file_content", args)).unwrap();
+        let result = rt
+            .block_on(toolbox.call("search_file_content", args))
+            .unwrap();
         let content = result["content"].as_str().unwrap();
 
         assert!(!content.is_empty());
         // Verify path is relative (does not start with /)
         // Check that no line starts with /
         for line in content.lines() {
-             assert!(!line.starts_with("/"), "Line starts with absolute path: {}", line);
+            assert!(
+                !line.starts_with("/"),
+                "Line starts with absolute path: {}",
+                line
+            );
         }
-        
+
         // Check if README matches are found (it might not be the first match)
         assert!(content.contains("README") || content.contains("./README"));
     }
