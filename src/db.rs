@@ -1867,12 +1867,12 @@ impl Database {
     }
 
     pub async fn reset_reviewing_status(&self) -> Result<u64> {
-        let status_cancelled = ReviewStatus::Cancelled.as_str();
+        let status_pending = ReviewStatus::Pending.as_str();
         // Reset Patchsets
         let count_ps = self
             .conn
             .execute(
-                format!("UPDATE patchsets SET status = '{}' WHERE status IN ('Applying', 'In Review', 'Reviewing')", status_cancelled).as_str(),
+                format!("UPDATE patchsets SET status = '{}' WHERE status IN ('Applying', 'In Review', 'Reviewing')", status_pending).as_str(),
                 (),
             )
             .await?;
@@ -1883,7 +1883,7 @@ impl Database {
             .execute(
                 format!(
                     "UPDATE reviews SET status = '{}' WHERE status IN ('Applying', 'In Review')",
-                    status_cancelled
+                    status_pending
                 )
                 .as_str(),
                 (),
