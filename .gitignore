@@ -1,11 +1,12 @@
-/target
-Cargo.lock
 **/*.rs.bk
 *.db
 *.db-journal
-*.db-wal
 *.db-shm
-archives/
+*.db-wal
 .cargo/config.toml
-sashiko.log
+target/
+Cargo.lock
+archives/
+linux/
 review_trees/
+sashiko.log
