@@ -1276,7 +1276,12 @@
                         if (total === 0) {
                             displayResult = '<span style="color:#2e7d32;font-weight:bold;">No regressions</span>';
                         } else {
-                            displayResult = renderFindingsBadges(counts);
+                            const parts = [];
+                            parts.push(`Critical: <span style="${counts.critical > 0 ? 'color:#B71C1C;font-weight:bold' : 'color:#999'}">${counts.critical}</span>`);
+                            parts.push(`High: <span style="${counts.high > 0 ? 'color:#FF5722;font-weight:bold' : 'color:#999'}">${counts.high}</span>`);
+                            parts.push(`Medium: <span style="${counts.medium > 0 ? 'color:#FF9800;font-weight:bold' : 'color:#999'}">${counts.medium}</span>`);
+                            parts.push(`Low: <span style="${counts.low > 0 ? 'color:#FBC02D;font-weight:bold' : 'color:#999'}">${counts.low}</span>`);
+                            displayResult = parts.join(' · ');
                         }
                         parsedFindings = true;
                     }
