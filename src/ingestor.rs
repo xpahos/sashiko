@@ -18,6 +18,8 @@ pub struct Ingestor {
     sender: Sender<Event>,
     download: Option<usize>,
     no_nntp: bool,
+    message_id: Option<String>,
+    patchset_id: Option<String>,
 }
 
 impl Ingestor {
@@ -27,6 +29,8 @@ impl Ingestor {
         sender: Sender<Event>,
         download: Option<usize>,
         no_nntp: bool,
+        message_id: Option<String>,
+        patchset_id: Option<String>,
     ) -> Self {
         Self {
             settings,
@@ -34,10 +38,28 @@ impl Ingestor {
             sender,
             download,
             no_nntp,
+            message_id,
+            patchset_id,
         }
     }
 
     pub async fn run(&self) -> Result<()> {
+        if let Some(msg_id) = &self.message_id {
+            info!("Ingesting specific message: {}", msg_id);
+            if let Err(e) = self.ingest_message_by_id(msg_id).await {
+                error!("Failed to ingest message {}: {}", msg_id, e);
+            }
+            return Ok(());
+        }
+
+        if let Some(patchset_id) = &self.patchset_id {
+            info!("Ingesting specific patchset: {}", patchset_id);
+            if let Err(e) = self.ingest_patchset_by_id(patchset_id).await {
+                error!("Failed to ingest patchset {}: {}", patchset_id, e);
+            }
+            return Ok(());
+        }
+
         if let Some(n) = self.download {
             info!(
                 "Bootstrap requested: downloading/ingesting last {} messages from git archive",
@@ -54,6 +76,137 @@ impl Ingestor {
             info!("NNTP ingestor disabled via command line.");
         }
 
+        Ok(())
+    }
+
+    async fn ingest_message_by_id(&self, msg_id: &str) -> Result<()> {
+        let url = format!("https://lore.kernel.org/all/{}/raw", msg_id);
+        info!("Fetching raw message from {}", url);
+
+        let output = Command::new("curl")
+            .arg("-s")
+            .arg("-L") // Follow redirects
+            .arg(&url)
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            return Err(anyhow!(
+                "Failed to fetch message (status: {}): {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+
+        let content = output.stdout;
+        if content.is_empty() {
+             return Err(anyhow!("Empty response from {}", url));
+        }
+
+        // We use "manual" as group name for manually ingested messages
+        self.sender
+            .send(Event::ArticleFetched {
+                group: "manual".to_string(),
+                article_id: msg_id.to_string(),
+                content: Vec::new(),
+                raw: Some(content),
+            })
+            .await?;
+
+        info!("Successfully ingested message {}", msg_id);
+        Ok(())
+    }
+
+    async fn ingest_patchset_by_id(&self, msg_id: &str) -> Result<()> {
+        let url = format!("https://lore.kernel.org/all/{}/t.mbox.gz", msg_id);
+        info!("Fetching patchset mbox from {}", url);
+
+        // curl ... | gunzip
+        let mut curl_cmd = Command::new("bash");
+        curl_cmd
+            .arg("-c")
+            .arg(format!("curl -s -L {} | gunzip", url))
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+
+        let mut child = curl_cmd.spawn()?;
+        let stdout = child.stdout.take().ok_or_else(|| anyhow!("Failed to open stdout"))?;
+        let mut reader = BufReader::new(stdout);
+
+        let mut current_email = Vec::new();
+        let mut count = 0;
+        let mut line = Vec::new();
+
+        loop {
+            line.clear();
+            let bytes_read = reader.read_until(b'\n', &mut line).await?;
+            if bytes_read == 0 {
+                break;
+            }
+
+            // check if line starts with "From "
+            if line.starts_with(b"From ") {
+                if !current_email.is_empty() {
+                    // Process previous email
+                    self.process_mbox_email(&current_email).await?;
+                    count += 1;
+                    current_email.clear();
+                }
+                // We don't include the "From " line in the email content usually (it's the envelope)
+                // BUT mail-parser might handle it or ignore it.
+                // Standard mbox: email starts after "From ...".
+                // But some parsers expect headers immediately.
+                // Let's Skip the "From " line for the content we send to parser,
+                // as `parse_email` likely expects headers (Message-ID etc) first.
+            } else {
+                current_email.extend_from_slice(&line);
+            }
+        }
+
+        // Process last email
+        if !current_email.is_empty() {
+            self.process_mbox_email(&current_email).await?;
+            count += 1;
+        }
+
+        let status = child.wait().await?;
+        if !status.success() {
+             warn!("curl/gunzip process exited with error");
+        }
+
+        info!("Successfully ingested {} messages from patchset {}", count, msg_id);
+        Ok(())
+    }
+
+    async fn process_mbox_email(&self, raw_bytes: &[u8]) -> Result<()> {
+        // We don't have the Message-ID easily unless we parse it here,
+        // but we can let the main parser handle it.
+        // We use a placeholder ID or try to extract it.
+        // Actually, ArticleFetched expects article_id.
+        // Let's try to extract Message-ID quickly.
+        let raw_str = String::from_utf8_lossy(raw_bytes);
+        let msg_id = raw_str
+            .lines()
+            .find(|l| l.to_lowercase().starts_with("message-id:"))
+            .map(|l| l.trim_start_matches(|c| c != '<').trim_end_matches(|c| c != '>'))
+            .unwrap_or("unknown")
+            .trim_matches(|c| c == '<' || c == '>') // Remove brackets if present
+            .to_string();
+        
+        // Skip if empty (e.g. mbox artifacts)
+        if raw_bytes.iter().all(|b| b.is_ascii_whitespace()) {
+            return Ok(());
+        }
+
+        self.sender
+            .send(Event::ArticleFetched {
+                group: "manual".to_string(),
+                article_id: msg_id,
+                content: Vec::new(),
+                raw: Some(raw_bytes.to_vec()),
+            })
+            .await?;
         Ok(())
     }
 

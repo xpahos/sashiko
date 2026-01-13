@@ -28,6 +28,14 @@ struct Cli {
     #[arg(long)]
     port: Option<u16>,
 
+    /// Ingest a specific message by Message-ID
+    #[arg(long)]
+    message: Option<String>,
+
+    /// Ingest a specific patchset (series) by the Message-ID of the first message
+    #[arg(long)]
+    patchset: Option<String>,
+
     /// Enable debug logging (overrides settings)
     #[arg(long)]
     debug: bool,
@@ -234,6 +242,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         raw_tx,
         cli.download,
         cli.no_nntp,
+        cli.message,
+        cli.patchset,
     );
     tokio::spawn(async move {
         if let Err(e) = ingestor.run().await {
