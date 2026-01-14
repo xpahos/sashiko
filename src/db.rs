@@ -1370,6 +1370,7 @@ impl Database {
         version: Option<u32>,
         part_index: u32,
         baseline_id: Option<i64>,
+        strict_author: bool,
     ) -> Result<Option<i64>> {
         // Find candidate patchsets in this thread
         let mut rows = self
@@ -1395,6 +1396,7 @@ impl Database {
 
             // Matching logic:
             // 1. Author matches OR it's a multi-part series with matching total_parts (trusting thread context)
+            //    BUT strict_author enforces strict author matching (for Email/NNTP).
             // 2. Time must be close (within 24 hours / 86400s)
             // 3. Total parts must match
             // 4. Versions must match OR one is unspecified (None)
@@ -1419,9 +1421,15 @@ impl Database {
                 true // For series, we rely on 1/N, 2/N pattern and author/time.
             };
 
-            // Relaxed author check: if it's a series (total > 1) and counts match in the same thread,
-            // we assume it's the same series even if author differs (e.g. git ingest range, or co-authors).
-            let author_or_series_match = existing_author == author || (total_parts > 1 && total_parts == existing_total);
+            // Relaxed author check logic
+            let author_match = existing_author == author;
+            let series_match = total_parts > 1 && total_parts == existing_total;
+
+            let author_or_series_match = if strict_author {
+                author_match
+            } else {
+                author_match || series_match
+            };
 
             if author_or_series_match
                 && (date - existing_date).abs() < 86400
@@ -2214,7 +2222,7 @@ mod tests {
                 "cc",
                 Some(1),
                 1,
-                None,
+                None, true
             )
             .await
             .unwrap();
@@ -2250,7 +2258,7 @@ mod tests {
                 "cc",
                 Some(1),
                 0,
-                None,
+                None, true
             )
             .await
             .unwrap();
@@ -2278,7 +2286,7 @@ mod tests {
             "cc",
             Some(1),
             2,
-            None,
+            None, true
         )
         .await
         .unwrap();
@@ -2301,7 +2309,7 @@ mod tests {
                 "cc",
                 Some(1),
                 0,
-                None,
+                None, false
             )
             .await
             .unwrap();
@@ -2315,7 +2323,7 @@ mod tests {
                 thread_id,
                 None,
                 "[PATCH v2] Patchset 1",
-                "Author A",
+                "Author B",
                 1002,
                 2,
                 1,
@@ -2323,7 +2331,7 @@ mod tests {
                 "cc",
                 Some(2),
                 0,
-                None,
+                None, true
             )
             .await
             .unwrap();
@@ -2357,7 +2365,7 @@ mod tests {
                 "",
                 Some(1),
                 1,
-                None,
+                None, true
             )
             .await
             .unwrap()
@@ -2382,7 +2390,7 @@ mod tests {
                 "",
                 Some(1),
                 3,
-                None,
+                None, true
             )
             .await
             .unwrap()
@@ -2422,7 +2430,7 @@ mod tests {
                 "",
                 Some(1),
                 3,
-                None,
+                None, true
             )
             .await
             .unwrap()
@@ -2450,7 +2458,7 @@ mod tests {
                 "",
                 Some(1),
                 2,
-                None,
+                None, true
             )
             .await
             .unwrap()
@@ -2495,7 +2503,7 @@ mod tests {
                     "cc",
                     None,
                     idx as u32,
-                    None,
+                    None, true
                 )
                 .await
                 .unwrap()
@@ -2546,7 +2554,7 @@ mod tests {
                 "",
                 None,
                 1,
-                None,
+                None, true
             )
             .await
             .unwrap()
@@ -2621,7 +2629,7 @@ mod tests {
                 "",
                 Some(6),
                 0,
-                None,
+                None, true
             )
             .await
             .unwrap()
@@ -2656,7 +2664,7 @@ mod tests {
                 "",
                 None,
                 1,
-                None,
+                None, true
             )
             .await
             .unwrap()
@@ -2708,7 +2716,7 @@ mod tests {
                 "",
                 None,
                 1,
-                None,
+                None, true
             )
             .await
             .unwrap()
@@ -2743,7 +2751,7 @@ mod tests {
                 "",
                 None,
                 1,
-                None,
+                None, true
             )
             .await
             .unwrap()
@@ -2793,7 +2801,7 @@ mod tests {
                 "",
                 None,
                 0,
-                None,
+                None, true
             )
             .await
             .unwrap()
@@ -2828,7 +2836,7 @@ mod tests {
                 "",
                 None,
                 1,
-                None,
+                None, true
             )
             .await
             .unwrap()
@@ -2878,7 +2886,7 @@ mod tests {
                 "",
                 Some(5),
                 1,
-                None,
+                None, true
             )
             .await
             .unwrap()
@@ -2913,7 +2921,7 @@ mod tests {
                 "",
                 Some(6),
                 1,
-                None,
+                None, true
             )
             .await
             .unwrap()
@@ -2963,7 +2971,7 @@ mod tests {
                 "",
                 Some(3),
                 0,
-                None,
+                None, true
             )
             .await
             .unwrap()
@@ -2998,7 +3006,7 @@ mod tests {
                 "",
                 Some(3),
                 1,
-                None,
+                None, true
             )
             .await
             .unwrap()
@@ -3033,7 +3041,7 @@ mod tests {
                 "",
                 Some(3),
                 2,
-                None,
+                None, true
             )
             .await
             .unwrap()
@@ -3081,7 +3089,7 @@ mod tests {
                 "",
                 Some(3),
                 0,
-                None,
+                None, true
             )
             .await
             .unwrap()
@@ -3116,7 +3124,7 @@ mod tests {
                 thread_id, None, subject, author, 80005, 17, 1, "", "",
                 parsed_ver, // Pass the result of the potentially buggy parser
                 1,
-                None,
+                None, true
             )
             .await
             .unwrap()
@@ -3166,7 +3174,7 @@ mod tests {
                 "",
                 None,
                 1,
-                None,
+                None, true
             )
             .await
             .unwrap()
@@ -3223,7 +3231,7 @@ mod tests {
                 "",
                 None,
                 2,
-                None,
+                None, true
             )
             .await
             .unwrap()
@@ -3316,7 +3324,7 @@ mod tests {
         // Setup patchset
         let thread_id = db.create_thread("root", "Subject", 100).await.unwrap();
         db.create_message("msg1", thread_id, None, "Author", "Subject", 100, "", "", "", None, None).await.unwrap();
-        let ps_id = db.create_patchset(thread_id, Some("msg1"), "Subject", "Author", 100, 1, 1, "", "", None, 1, None).await.unwrap().unwrap();
+        let ps_id = db.create_patchset(thread_id, Some("msg1"), "Subject", "Author", 100, 1, 1, "", "", None, 1, None, true).await.unwrap().unwrap();
         let patch_id = db.create_patch(ps_id, "msg1", 1, "diff").await.unwrap();
 
         // 1. Initial State: No reviews

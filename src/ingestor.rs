@@ -211,8 +211,13 @@ impl Ingestor {
             .ok_or_else(|| anyhow!("Failed to open stdout"))?;
         let reader = BufReader::new(stdout);
 
-        self.ingest_from_mbox_reader(reader, self.baseline.clone(), &format!("thread {}", msg_id))
-            .await?;
+        self.ingest_from_mbox_reader(
+            reader,
+            self.baseline.clone(),
+            &format!("thread {}", msg_id),
+            "lore-mbox",
+        )
+        .await?;
 
         let status = child.wait().await?;
         if !status.success() {
@@ -227,6 +232,7 @@ impl Ingestor {
         mut reader: R,
         baseline: Option<String>,
         source_desc: &str,
+        group: &str,
     ) -> Result<usize> {
         let mut current_email = Vec::new();
         let mut count = 0;
@@ -243,7 +249,7 @@ impl Ingestor {
             if line.starts_with(b"From ") {
                 if !current_email.is_empty() {
                     // Process previous email
-                    self.process_mbox_email(&current_email, baseline.clone())
+                    self.process_mbox_email(&current_email, baseline.clone(), group)
                         .await?;
                     count += 1;
                     current_email.clear();
@@ -256,7 +262,8 @@ impl Ingestor {
 
         // Process last email
         if !current_email.is_empty() {
-            self.process_mbox_email(&current_email, baseline).await?;
+            self.process_mbox_email(&current_email, baseline, group)
+                .await?;
             count += 1;
         }
 
@@ -311,8 +318,13 @@ impl Ingestor {
             .ok_or_else(|| anyhow!("Failed to open stdout"))?;
         let reader = BufReader::new(stdout);
 
-        self.ingest_from_mbox_reader(reader, baseline, &format!("git range {}", range))
-            .await?;
+        self.ingest_from_mbox_reader(
+            reader,
+            baseline,
+            &format!("git range {}", range),
+            "git-import",
+        )
+        .await?;
 
         let status = child.wait().await?;
         if !status.success() {
@@ -322,7 +334,12 @@ impl Ingestor {
         Ok(())
     }
 
-    async fn process_mbox_email(&self, raw_bytes: &[u8], baseline: Option<String>) -> Result<()> {
+    async fn process_mbox_email(
+        &self,
+        raw_bytes: &[u8],
+        baseline: Option<String>,
+        group: &str,
+    ) -> Result<()> {
         // We don't have the Message-ID easily unless we parse it here,
         // but we can let the main parser handle it.
         // We use a placeholder ID or try to extract it.
@@ -347,7 +364,7 @@ impl Ingestor {
 
         self.sender
             .send(Event::ArticleFetched {
-                group: "manual".to_string(),
+                group: group.to_string(),
                 article_id: msg_id,
                 content: Vec::new(),
                 raw: Some(raw_bytes.to_vec()),

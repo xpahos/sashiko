@@ -445,6 +445,7 @@ async fn process_parsed_article(worker_db: &Database, article: ParsedArticle) ->
     };
 
     if metadata.is_patch_or_cover {
+        let strict_author = group != "git-import";
         match worker_db
             .create_patchset(
                 thread_id,
@@ -459,6 +460,7 @@ async fn process_parsed_article(worker_db: &Database, article: ParsedArticle) ->
                 metadata.version,
                 metadata.index,
                 baseline_id,
+                strict_author,
             )
             .await
         {
