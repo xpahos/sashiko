@@ -1471,13 +1471,12 @@ impl Database {
             //    BUT strict_author enforces strict author matching (for Email/NNTP).
             // 2. Time must be close (within 24 hours / 86400s)
             // 3. Total parts must match
-            // 4. Versions must match OR one is unspecified (None)
+            // 4. Versions must match (treating None as v1)
             // 5. For singletons (total=1), Subject must match (fuzzy) to avoid merging unrelated patches
 
-            let versions_compatible = match (version, existing_version) {
-                (Some(a), Some(b)) => a == b,
-                _ => true,
-            };
+            let v_new = version.unwrap_or(1);
+            let v_old = existing_version.unwrap_or(1);
+            let versions_compatible = v_new == v_old;
 
             let is_singleton = total_parts == 1;
             // For singletons, we require the subject to be somewhat similar to avoid merging unrelated patches.
@@ -2515,9 +2514,9 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(
+        assert_ne!(
             ps1, ps_v2,
-            "Implicit v1 should merge with v2 if time/author match"
+            "Implicit v1 should NOT merge with v2 even if time/author match"
         );
 
         // 7. Test Merging: Create disjoint patchsets then bridge them
@@ -2772,7 +2771,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_implicit_version_merging() {
+    async fn test_implicit_version_mismatch_no_merge() {
         let db = setup_db().await;
         let thread_id = db
             .create_thread("root_v6", "Version 6 Series", 30000)
@@ -2781,10 +2780,8 @@ mod tests {
         let author = "Author V6 <v6@example.com>";
 
         // Case: Cover letter has v6, but patches don't say v6 (implicitly v1?)
-        // If the user forgot to version patches, they should still merge if time/author match.
-        // However, strict version check prevents this if one is v6 and other is v1.
-        // But the prompt says "They should be merged".
-        // This implies loose version matching if one side is v1 (default)?
+        // If the user forgot to version patches, they should NOT merge with strict version checking.
+        // This prevents merging v1 patches into v6 series if timestamps overlap.
 
         // 1. Cover letter: [PATCH 00/33 v6] -> v6
         db.create_message(
@@ -2858,11 +2855,10 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        // With strict checking, this might fail (assert_eq will panic if not merged).
-        // If it fails, we need to relax the check in `create_patchset`.
-        assert_eq!(
+        // With strict checking, this MUST NOT merge.
+        assert_ne!(
             ps_cover, ps_p1,
-            "Should merge explicit v6 cover with implicit v1 patch if context matches"
+            "Should NOT merge explicit v6 cover with implicit v1 patch"
         );
     }
 
@@ -3314,7 +3310,7 @@ mod tests {
         // If we want to simulate the BUG, we must pass what `parse_email` WOULD pass.
         // `parse_email` uses `parse_subject_version`.
         // Let's check what `parse_subject_version` does for this string.
-        let subject = "[PATCH 01/17] Support v2 hardware";
+        let subject = "[PATCH v3 01/17] Support v2 hardware";
         let parsed_ver = crate::patch::parse_subject_version(subject);
 
         let ps_part1 = db
@@ -3329,7 +3325,7 @@ mod tests {
 
         assert_eq!(
             ps_cover, ps_part1,
-            "Should merge even if subject contains 'v2'"
+            "Should merge because subject implies v3 (and ignores v2 in text)"
         );
     }
 
