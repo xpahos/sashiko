@@ -27,6 +27,7 @@ struct ReviewContext {
     cache_manager: Arc<CacheManager>,
     active_cache_name: Arc<Mutex<Option<String>>>,
     current_cache_name: Option<String>,
+    target_review_count: usize,
 }
 
 enum PatchResult {
@@ -183,6 +184,8 @@ impl Reviewer {
 
         for patchset in patchsets {
             let permit = self.semaphore.clone().acquire_owned().await?;
+            let target_review_count = patchset.target_review_count.unwrap_or(1) as usize;
+
             let context = ReviewContext {
                 db: self.db.clone(),
                 settings: self.settings.clone(),
@@ -191,6 +194,7 @@ impl Reviewer {
                 cache_manager: self.cache_manager.clone(),
                 active_cache_name: self.active_cache_name.clone(),
                 current_cache_name: current_cache_name.clone(),
+                target_review_count,
             };
 
             tokio::spawn(async move {
@@ -428,28 +432,17 @@ impl Reviewer {
             None
         };
 
-        if ctx
+        let successful_count = ctx
             .db
-            .has_successful_review(patchset_id, patch_id, baseline_id)
-            .await?
-        {
+            .count_successful_reviews(patchset_id, patch_id, baseline_id)
+            .await?;
+
+        if successful_count >= ctx.target_review_count {
             info!(
-                "Patch {}/{} (ID: {}) already reviewed with baseline {:?}. Skipping.",
-                patchset_id, index, patch_id, baseline_id
+                "Patch {}/{} (ID: {}) already has {} successful reviews with baseline {:?} (target: {}). Skipping.",
+                patchset_id, index, patch_id, successful_count, baseline_id, ctx.target_review_count
             );
             return Ok(PatchResult::Success);
-        }
-
-        if ctx
-            .db
-            .has_failed_review(patchset_id, patch_id, baseline_id)
-            .await?
-        {
-            info!(
-                "Patch {}/{} (ID: {}) previously failed with baseline {:?} before AI stage. Skipping.",
-                patchset_id, index, patch_id, baseline_id
-            );
-            return Ok(PatchResult::ReviewFailed);
         }
 
         let mut retries = 0;

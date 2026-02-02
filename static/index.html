@@ -1157,34 +1157,50 @@
                     if (!reviews || reviews.length === 0) {
                         summaryStatus = '<span style="color:#888">No reviews</span>';
                     } else {
-                         summaryStatus = reviews.map(r => {
-                            let findingsHtml = '<span style="color:#2e7d32; font-weight:bold">No issues</span>';
-                            
-                             if (r.status && (r.status.toLowerCase().includes('failed') || r.status.toLowerCase().includes('error'))) {
-                                findingsHtml = `<span style="color:#d73a49; font-weight:bold">${escapeHtml(r.status)}</span>`;
-                             } else {
+                         // Aggregate "MAX" across all reviews for this patch
+                         let maxCounts = { low: 0, medium: 0, high: 0, critical: 0 };
+                         let hasSuccessful = false;
+                         let errors = [];
+
+                         reviews.forEach(r => {
+                            if (r.status === 'Reviewed') {
+                                hasSuccessful = true;
                                 try {
                                     if (r.output) {
                                         const out = JSON.parse(r.output);
-                                        if (out.findings && Array.isArray(out.findings) && out.findings.length > 0) {
-                                            let counts = { low: 0, medium: 0, high: 0, critical: 0 };
+                                        if (out.findings && Array.isArray(out.findings)) {
+                                            let current = { low: 0, medium: 0, high: 0, critical: 0 };
                                             out.findings.forEach(f => {
                                                 const s = (f.severity || '').toLowerCase();
-                                                if (s === 'critical') counts.critical++;
-                                                else if (s === 'high') counts.high++;
-                                                else if (s === 'medium') counts.medium++;
-                                                else counts.low++;
+                                                if (s === 'critical') current.critical++;
+                                                else if (s === 'high') current.high++;
+                                                else if (s === 'medium') current.medium++;
+                                                else current.low++;
                                             });
                                             
-                                            findingsHtml = renderFindingsBadges(counts);
+                                            // Max aggregation
+                                            maxCounts.critical = Math.max(maxCounts.critical, current.critical);
+                                            maxCounts.high = Math.max(maxCounts.high, current.high);
+                                            maxCounts.medium = Math.max(maxCounts.medium, current.medium);
+                                            maxCounts.low = Math.max(maxCounts.low, current.low);
                                         }
                                     }
                                 } catch (e) {}
-                             }
-                             
-                             const model = r.model ? r.model.split('/').pop() : 'model';
-                             return `<div style="font-size:0.9em"><span style="font-weight:600; color:#555">${escapeHtml(model)}:</span> ${findingsHtml}</div>`;
-                         }).join('');
+                            } else if (r.status && (r.status.toLowerCase().includes('failed') || r.status.toLowerCase().includes('error'))) {
+                                errors.push(r.status);
+                            }
+                         });
+                         
+                         if (hasSuccessful) {
+                            summaryStatus = renderFindingsBadges(maxCounts);
+                            if (reviews.length > 1) {
+                                summaryStatus += ` <span style="color:#888; font-size:0.85em; font-style:italic;">(max of ${reviews.length} runs)</span>`;
+                            }
+                         } else if (errors.length > 0) {
+                            summaryStatus = `<span style="color:#d73a49; font-weight:bold">${escapeHtml(errors[0])}</span>`;
+                         } else {
+                            summaryStatus = '<span style="color:#888">In progress...</span>';
+                         }
                     }
                     const patchLabel = patch ? `Patch ${patch.part_index}` : `Patch ${pid}`;
                     const patchSubject = patch ? escapeHtml(patch.subject || '(no subject)') : '';

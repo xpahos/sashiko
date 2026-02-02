@@ -35,6 +35,7 @@ pub struct PatchsetRow {
     pub findings_critical: Option<i64>,
     pub baseline_id: Option<i64>,
     pub failed_reason: Option<String>,
+    pub target_review_count: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -332,6 +333,9 @@ impl Database {
         let _ = self
             .try_add_column("patchsets", "failed_reason", "TEXT")
             .await;
+        let _ = self
+            .try_add_column("patchsets", "target_review_count", "INTEGER DEFAULT 1")
+            .await;
 
         let _ = self
             .conn
@@ -402,23 +406,40 @@ impl Database {
         patch_id: i64,
         baseline_id: Option<i64>,
     ) -> Result<bool> {
+        Ok(self
+            .count_successful_reviews(patchset_id, patch_id, baseline_id)
+            .await?
+            > 0)
+    }
+
+    pub async fn count_successful_reviews(
+        &self,
+        patchset_id: i64,
+        patch_id: i64,
+        baseline_id: Option<i64>,
+    ) -> Result<usize> {
         let mut rows = if let Some(bid) = baseline_id {
             self.conn
                 .query(
-                    "SELECT 1 FROM reviews WHERE patchset_id = ? AND patch_id = ? AND baseline_id = ? AND status = 'Reviewed'",
+                    "SELECT COUNT(*) FROM reviews WHERE patchset_id = ? AND patch_id = ? AND baseline_id = ? AND status = 'Reviewed'",
                     libsql::params![patchset_id, patch_id, bid],
                 )
                 .await?
         } else {
             self.conn
                 .query(
-                    "SELECT 1 FROM reviews WHERE patchset_id = ? AND patch_id = ? AND baseline_id IS NULL AND status = 'Reviewed'",
+                    "SELECT COUNT(*) FROM reviews WHERE patchset_id = ? AND patch_id = ? AND baseline_id IS NULL AND status = 'Reviewed'",
                     libsql::params![patchset_id, patch_id],
                 )
                 .await?
         };
 
-        Ok(rows.next().await.ok().flatten().is_some())
+        if let Ok(Some(row)) = rows.next().await {
+            let count: i64 = row.get(0)?;
+            Ok(count as usize)
+        } else {
+            Ok(0)
+        }
     }
 
     pub async fn has_failed_review(
@@ -1766,19 +1787,28 @@ impl Database {
 
         let sql = format!(
             "SELECT p.id, p.subject, p.status, p.thread_id, p.author, p.date, p.cover_letter_message_id, p.total_parts, p.received_parts, GROUP_CONCAT(s.name, ','),
-             COALESCE(f.low, 0), COALESCE(f.medium, 0), COALESCE(f.high, 0), COALESCE(f.critical, 0), p.baseline_id, p.failed_reason
+             COALESCE(f.low, 0), COALESCE(f.medium, 0), COALESCE(f.high, 0), COALESCE(f.critical, 0), p.baseline_id, p.failed_reason, p.target_review_count
              FROM patchsets p
              LEFT JOIN patchsets_subsystems ps ON p.id = ps.patchset_id
              LEFT JOIN subsystems s ON ps.subsystem_id = s.id
              LEFT JOIN (
-                SELECT r.patchset_id,
-                    SUM(CASE WHEN f.severity = 1 THEN 1 ELSE 0 END) as low,
-                    SUM(CASE WHEN f.severity = 2 THEN 1 ELSE 0 END) as medium,
-                    SUM(CASE WHEN f.severity = 3 THEN 1 ELSE 0 END) as high,
-                    SUM(CASE WHEN f.severity = 4 THEN 1 ELSE 0 END) as critical
-                FROM reviews r
-                JOIN findings f ON r.id = f.review_id
-                GROUP BY r.patchset_id
+                SELECT patchset_id,
+                    MAX(low) as low,
+                    MAX(medium) as medium,
+                    MAX(high) as high,
+                    MAX(critical) as critical
+                FROM (
+                    SELECT r.patchset_id, r.id,
+                        SUM(CASE WHEN f.severity = 1 THEN 1 ELSE 0 END) as low,
+                        SUM(CASE WHEN f.severity = 2 THEN 1 ELSE 0 END) as medium,
+                        SUM(CASE WHEN f.severity = 3 THEN 1 ELSE 0 END) as high,
+                        SUM(CASE WHEN f.severity = 4 THEN 1 ELSE 0 END) as critical
+                    FROM reviews r
+                    JOIN findings f ON r.id = f.review_id
+                    WHERE r.status = 'Reviewed'
+                    GROUP BY r.id
+                )
+                GROUP BY patchset_id
              ) f ON p.id = f.patchset_id
              {} 
              GROUP BY p.id
@@ -1824,6 +1854,7 @@ impl Database {
                 findings_critical: row.get(13).ok(),
                 baseline_id: row.get(14).ok(),
                 failed_reason: row.get(15).ok(),
+                target_review_count: row.get(16).ok(),
             });
         }
         Ok(patchsets)
@@ -2132,7 +2163,7 @@ impl Database {
 
     pub async fn get_pending_patchsets(&self, limit: usize) -> Result<Vec<PatchsetRow>> {
         let mut rows = self.conn.query(
-            "SELECT id, subject, status, thread_id, author, date, cover_letter_message_id, total_parts, received_parts, baseline_id, failed_reason 
+            "SELECT id, subject, status, thread_id, author, date, cover_letter_message_id, total_parts, received_parts, baseline_id, failed_reason, target_review_count
              FROM patchsets WHERE status = 'Pending' ORDER BY date ASC LIMIT ?",
             libsql::params![limit as i64],
         ).await?;
@@ -2156,6 +2187,7 @@ impl Database {
                 findings_critical: None,
                 baseline_id: row.get(9).ok(),
                 failed_reason: row.get(10).ok(),
+                target_review_count: row.get(11).ok(),
             });
         }
         Ok(patchsets)
@@ -2169,6 +2201,33 @@ impl Database {
             )
             .await?;
         Ok(())
+    }
+
+    pub async fn rerun_patchset(&self, id: i64) -> Result<()> {
+        // 1. Reset patchset status to Pending
+        self.conn
+            .execute(
+                "UPDATE patchsets SET status = 'Pending' WHERE id = ?",
+                libsql::params![id],
+            )
+            .await?;
+
+        // 2. Increment target_review_count
+        self.conn
+            .execute(
+                "UPDATE patchsets SET target_review_count = COALESCE(target_review_count, 1) + 1 WHERE id = ?",
+                libsql::params![id],
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn rerun_patch(&self, patchset_id: i64, _patch_id: i64) -> Result<()> {
+        // NOTE: Currently we only support re-running the entire patchset to trigger more reviews.
+        // Even if the user requested a specific patch, we increment the set's target count
+        // to allow the reviewer service to proceed.
+        self.rerun_patchset(patchset_id).await
     }
 
     pub async fn create_fetching_patchset(&self, article_id: &str, subject: &str) -> Result<i64> {

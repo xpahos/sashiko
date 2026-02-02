@@ -51,6 +51,12 @@ pub struct PatchQuery {
 }
 
 #[derive(Deserialize)]
+pub struct RerunPatchQuery {
+    pub patchset_id: i64,
+    pub patch_id: i64,
+}
+
+#[derive(Deserialize)]
 pub struct SubsystemQuery {
     pub subsystem_id: Option<i64>,
 }
@@ -107,6 +113,8 @@ pub async fn run_server(
         .route("/api/stats/reviews", get(stats_reviews))
         .route("/api/stats/tools", get(stats_tools))
         .route("/api/submit", post(submit_patch))
+        .route("/api/patchset/rerun", post(rerun_patchset))
+        .route("/api/patch/rerun", post(rerun_patch))
         .route("/", get_service(ServeFile::new("static/index.html")))
         .nest_service("/static", ServeDir::new("static"))
         .with_state(state);
@@ -461,4 +469,50 @@ async fn stats_tools(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     Ok(Json(data))
+}
+
+async fn rerun_patchset(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<PatchQuery>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !addr.ip().is_loopback() {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    let id = query
+        .id
+        .parse::<i64>()
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    state.db.rerun_patchset(id).await.map_err(|e| {
+        error!("Failed to rerun patchset {}: {}", id, e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    Ok(Json(serde_json::json!({ "status": "accepted" })))
+}
+
+async fn rerun_patch(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<RerunPatchQuery>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !addr.ip().is_loopback() {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    state
+        .db
+        .rerun_patch(query.patchset_id, query.patch_id)
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to rerun patch {} in patchset {}: {}",
+                query.patch_id, query.patchset_id, e
+            );
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(serde_json::json!({ "status": "accepted" })))
 }
