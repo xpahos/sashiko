@@ -693,7 +693,12 @@ async fn process_parsed_article(worker_db: &Database, article: ParsedArticle) ->
     }
 }
 
-async fn process_recipients(db: &Database, message_id: i64, recipients: &str, recipient_type: &str) {
+async fn process_recipients(
+    db: &Database,
+    message_id: i64,
+    recipients: &str,
+    recipient_type: &str,
+) {
     for raw in recipients.split(',') {
         let raw = raw.trim();
         if raw.is_empty() {
@@ -731,7 +736,7 @@ async fn process_recipients(db: &Database, message_id: i64, recipients: &str, re
                 {
                     // Ignore duplicates
                     if !e.to_string().contains("UNIQUE constraint failed") {
-                         error!(
+                        error!(
                             "Failed to add recipient {} to message {}: {}",
                             email, message_id, e
                         );

@@ -440,7 +440,12 @@ impl Reviewer {
         if successful_count >= ctx.target_review_count {
             info!(
                 "Patch {}/{} (ID: {}) already has {} successful reviews with baseline {:?} (target: {}). Skipping.",
-                patchset_id, index, patch_id, successful_count, baseline_id, ctx.target_review_count
+                patchset_id,
+                index,
+                patch_id,
+                successful_count,
+                baseline_id,
+                ctx.target_review_count
             );
             return Ok(PatchResult::Success);
         }
