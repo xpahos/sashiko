@@ -12,7 +12,7 @@ use crate::ai::gemini::{
 use crate::ai::token_budget::TokenBudget;
 use crate::worker::prompts::PromptRegistry;
 use crate::worker::tools::ToolBox;
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use serde_json::{Value, json};
 use tracing::{debug, warn};
 
@@ -237,18 +237,34 @@ impl Worker {
                     tools: None, // Tools are baked into the cache
                     generation_config,
                 };
-                let resp = self.client.generate_content_with_cache(req).await?;
-
-                // Check for cache update from parent
-                if let Some(usage) = &resp.usage_metadata {
-                    if let Some(extra) = &usage.extra {
-                        if let Some(new_name) = extra.get("new_cache_name").and_then(|v| v.as_str())
-                        {
-                            self.cache_name = Some(new_name.to_string());
+                match self.client.generate_content_with_cache(req).await {
+                    Ok(resp) => {
+                        // Check for cache update from parent
+                        if let Some(usage) = &resp.usage_metadata {
+                            if let Some(extra) = &usage.extra {
+                                if let Some(new_name) =
+                                    extra.get("new_cache_name").and_then(|v| v.as_str())
+                                {
+                                    self.cache_name = Some(new_name.to_string());
+                                }
+                            }
                         }
+                        resp
+                    }
+                    Err(e) => {
+                        return Ok(WorkerResult {
+                            output: None,
+                            error: Some(format!("Gemini API Error (Cached): {}", e)),
+                            input_context,
+                            history: self.history.clone(),
+                            history_before_pruning: final_history_before_pruning,
+                            history_after_pruning: final_history_after_pruning,
+                            tokens_in: total_tokens_in,
+                            tokens_out: total_tokens_out,
+                            tokens_cached: total_tokens_cached,
+                        });
                     }
                 }
-                resp
             } else {
                 let req = GenerateContentRequest {
                     contents: self.history.clone(),
@@ -257,7 +273,22 @@ impl Worker {
                     generation_config,
                 };
 
-                self.client.generate_content(req).await?
+                match self.client.generate_content(req).await {
+                    Ok(resp) => resp,
+                    Err(e) => {
+                        return Ok(WorkerResult {
+                            output: None,
+                            error: Some(format!("Gemini API Error: {}", e)),
+                            input_context,
+                            history: self.history.clone(),
+                            history_before_pruning: final_history_before_pruning,
+                            history_after_pruning: final_history_after_pruning,
+                            tokens_in: total_tokens_in,
+                            tokens_out: total_tokens_out,
+                            tokens_cached: total_tokens_cached,
+                        });
+                    }
+                }
             };
 
             if let Some(usage) = &resp.usage_metadata {
@@ -266,11 +297,21 @@ impl Worker {
                 total_tokens_cached += usage.cached_content_token_count.unwrap_or(0);
             }
 
-            let candidate = resp
-                .candidates
-                .as_ref()
-                .and_then(|c| c.first())
-                .ok_or_else(|| anyhow!("No candidates returned"))?;
+            let candidate = if let Some(c) = resp.candidates.as_ref().and_then(|c| c.first()) {
+                c
+            } else {
+                return Ok(WorkerResult {
+                    output: None,
+                    error: Some("No candidates returned from Gemini".to_string()),
+                    input_context,
+                    history: self.history.clone(),
+                    history_before_pruning: final_history_before_pruning,
+                    history_after_pruning: final_history_after_pruning,
+                    tokens_in: total_tokens_in,
+                    tokens_out: total_tokens_out,
+                    tokens_cached: total_tokens_cached,
+                });
+            };
 
             let content = &candidate.content;
             self.history.push(content.clone());
@@ -370,9 +411,25 @@ impl Worker {
                     clean_text
                 };
 
-                let json_val: Value = serde_json::from_str(clean_text).map_err(|e| {
-                    anyhow!("Failed to parse JSON response: {}. Text: {}", e, final_text)
-                })?;
+                let json_val: Value = match serde_json::from_str(clean_text) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        return Ok(WorkerResult {
+                            output: None,
+                            error: Some(format!(
+                                "Failed to parse JSON response: {}. Text: {}",
+                                e, final_text
+                            )),
+                            input_context,
+                            history: self.history.clone(),
+                            history_before_pruning: final_history_before_pruning,
+                            history_after_pruning: final_history_after_pruning,
+                            tokens_in: total_tokens_in,
+                            tokens_out: total_tokens_out,
+                            tokens_cached: total_tokens_cached,
+                        });
+                    }
+                };
 
                 return Ok(WorkerResult {
                     output: Some(json_val),

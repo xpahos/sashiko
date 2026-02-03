@@ -294,7 +294,10 @@ async fn main() -> Result<()> {
                         "patchset_id": patchset_id,
                         "baseline": baseline,
                         "patches": patch_results,
-                        "error": e.to_string()
+                        "error": e.to_string(),
+                        "tokens_in": 0,
+                        "tokens_out": 0,
+                        "tokens_cached": 0
                     });
                     println!("{}", serde_json::to_string(&result_json)?);
                 }
