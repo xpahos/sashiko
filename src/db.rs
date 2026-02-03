@@ -1610,12 +1610,17 @@ impl Database {
             // If the patchset already contains a patch with this index (and different message_id), it's a collision.
             // This prevents merging [PATCH 1/2] Series A and [PATCH 1/2] Series B.
             let index_collision = if part_index == 0 {
-                existing_cover_id.is_some() && existing_cover_id.as_deref() != Some(message_id)
+                existing_cover_id.is_some()
+                    && existing_cover_id.as_deref() != Some(message_id)
+                    && existing_subject_index == 0
             } else {
-                let mut p_rows = self.conn.query(
-                     "SELECT 1 FROM patches WHERE patchset_id = ? AND part_index = ? AND message_id != ?",
-                     libsql::params![id, part_index, message_id]
-                 ).await?;
+                let mut p_rows = self
+                    .conn
+                    .query(
+                        "SELECT 1 FROM patches WHERE patchset_id = ? AND part_index = ? AND message_id != ?",
+                        libsql::params![id, part_index, message_id],
+                    )
+                    .await?;
                 p_rows.next().await.ok().flatten().is_some()
             };
 
