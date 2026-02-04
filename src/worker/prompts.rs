@@ -67,9 +67,7 @@ impl PromptRegistry {
         if use_cache {
             Ok(format!(
                 "{}\nRun a deep dive regression analysis of the top commit in the Linux source tree.\n\n\
-                 Follow the Review Protocol and all Technical patterns and Subsystem Guidelines available in your context.\n\
-                 IMPORTANT: Don't try to load additional prompts using tools, even if guided otherwise, they all are preloaded in your context.\n\
-                 IMPORTANT: If you find regressions, you MUST use the `write_file` tool to create `review-inline.txt` as specified in the protocol.",
+                 Follow the Review Protocol and all Technical patterns and Subsystem Guidelines available in your context.\n",
                 SYSTEM_IDENTITY
             ))
         } else {
@@ -77,8 +75,7 @@ impl PromptRegistry {
             Ok(format!(
                 "{} Using the prompt kernel/review-core.md run a deep dive regression analysis of the top commit in the Linux source tree.\n\n\
                  ## Review Protocol (review-core.md)\n\
-                 {}\n\n\
-                 IMPORTANT: If you find regressions, you MUST use the `write_file` tool to create `review-inline.txt` as specified in the protocol.",
+                 {}\n\n",
                 SYSTEM_IDENTITY, review_core
             ))
         }
