@@ -159,6 +159,38 @@ impl GitWorktree {
         }
     }
 
+    pub async fn reset_hard(&self, ref_name: &str) -> Result<()> {
+        info!("Resetting worktree to {}", ref_name);
+        let output = Command::new("git")
+            .current_dir(&self.path)
+            .args(["reset", "--hard", ref_name])
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            return Err(anyhow!(
+                "git reset --hard failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        
+        // Also clean untracked files to be safe
+        let clean_output = Command::new("git")
+            .current_dir(&self.path)
+            .args(["clean", "-fdx"])
+            .output()
+            .await?;
+
+        if !clean_output.status.success() {
+             return Err(anyhow!(
+                "git clean failed: {}",
+                String::from_utf8_lossy(&clean_output.stderr)
+            ));
+        }
+
+        Ok(())
+    }
+
     #[allow(dead_code)]
     pub async fn remove(self) -> Result<()> {
         info!("Removing worktree at {:?}", self.path);

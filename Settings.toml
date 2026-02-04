@@ -12,8 +12,8 @@ groups = ["org.kernel.vger.linux-kernel"]
 [ai]
 provider = "gemini"
 model = "gemini-3-pro-preview"
-max_input_words = 150000
-max_interactions = 50
+max_input_words = 200000
+max_interactions = 100
 temperature = 1.0
 explicit_prompts_caching = true
 

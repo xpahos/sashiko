@@ -102,122 +102,46 @@ async fn main() -> Result<()> {
     );
     let (patchset_id, subject, patches) = (input.id, input.subject, input.patches);
 
-    let baseline = args.baseline.unwrap_or_else(|| "HEAD".to_string());
-    info!("Using baseline: {}", baseline);
-
+    let baseline_arg = args.baseline.unwrap_or_else(|| "HEAD".to_string());
     let repo_path = PathBuf::from(&settings.git.repository_path);
+    
+    info!("Resolving baseline: {}", baseline_arg);
+    let baseline_sha = sashiko::git_ops::get_commit_hash(&repo_path, &baseline_arg).await?;
+    info!("Using baseline: {} ({})", baseline_arg, baseline_sha);
+
     // Use provided or default baseline
-    let worktree = GitWorktree::new(&repo_path, &baseline, args.worktree_dir.as_deref()).await?;
+    let worktree = GitWorktree::new(&repo_path, &baseline_sha, args.worktree_dir.as_deref()).await?;
 
     info!("Created worktree at {:?}", worktree.path);
     info!("Found {} patches total", patches.len());
 
     let mut patch_results = Vec::new();
-    let mut all_applied = true;
-
-    // Filter patches to apply: all patches with index <= review_patch_index (if set), or all patches
-    let patches_to_apply: Vec<&PatchInput> = if let Some(target_idx) = args.review_patch_index {
-        patches.iter().filter(|p| p.index <= target_idx).collect()
-    } else {
-        patches.iter().collect()
-    };
-
-    info!("Applying {} patches...", patches_to_apply.len());
-
     let mut patch_shas = std::collections::HashMap::new();
     let mut patch_shows = std::collections::HashMap::new();
 
-    for p in &patches_to_apply {
+    // 1. Apply ALL patches to validate the series
+    info!("Applying all {} patches to validate series...", patches.len());
+    let mut all_applied = true;
+
+    for p in &patches {
         info!("Applying patch part {}", p.index);
+        
+        let success = apply_single_patch(
+            &worktree, 
+            p, 
+            &mut patch_shas, 
+            &mut patch_shows, 
+            &mut patch_results
+        ).await;
 
-        let mut applied_via_am = false;
-        let mut am_error = String::new();
-
-        if let (Some(author), Some(subject)) = (&p.author, &p.subject) {
-            // Try to construct mbox
-            let date_str = if let Some(ts) = p.date {
-                // Try format date using system date command
-                let output = std::process::Command::new("date")
-                    .arg("-R")
-                    .arg("-d")
-                    .arg(format!("@{}", ts))
-                    .output();
-                match output {
-                    Ok(o) if o.status.success() => {
-                        String::from_utf8_lossy(&o.stdout).trim().to_string()
-                    }
-                    _ => String::new(), // Fallback to no date (git am uses current)
-                }
-            } else {
-                String::new()
-            };
-
-            let mbox = format!(
-                "From: {}\nDate: {}\nSubject: {}\n\n{}\n",
-                author, date_str, subject, p.diff
-            );
-
-            match worktree.apply_patch(&mbox).await {
-                Ok(_) => {
-                    applied_via_am = true;
-                    if let Ok(sha) = sashiko::git_ops::get_commit_hash(&worktree.path, "HEAD").await
-                    {
-                        patch_shas.insert(p.index, sha.clone());
-                        if let Ok(show) = worktree.get_commit_show(&sha).await {
-                            patch_shows.insert(p.index, show);
-                        }
-                    }
-                    patch_results.push(json!({
-                        "index": p.index,
-                        "status": "applied",
-                        "method": "git-am"
-                    }));
-                }
-                Err(e) => {
-                    info!("git am failed, falling back to git apply: {}", e);
-                    am_error = e.to_string();
-                }
-            }
-        }
-
-        if !applied_via_am {
-            match worktree.apply_raw_diff(&p.diff).await {
-                Ok(output) => {
-                    let status = if output.status.success() {
-                        "applied"
-                    } else {
-                        all_applied = false;
-                        "failed"
-                    };
-                    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-                    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-
-                    if status == "failed" {
-                        info!("Failed to apply patch {}: {}", p.index, stderr);
-                    }
-
-                    patch_results.push(json!({
-                        "index": p.index,
-                        "status": status,
-                        "method": "git-apply",
-                        "stdout": stdout,
-                        "stderr": stderr,
-                        "exit_code": output.status.code(),
-                        "am_error": if !am_error.is_empty() { Some(am_error) } else { None }
-                    }));
-                }
-                Err(e) => {
-                    all_applied = false;
-                    info!("Error applying patch {}: {}", p.index, e);
-                    patch_results.push(json!({
-                        "index": p.index,
-                        "status": "error",
-                        "method": "git-apply",
-                        "error": e.to_string(),
-                        "am_error": if !am_error.is_empty() { Some(am_error) } else { None }
-                    }));
-                }
-            }
+        if !success {
+            all_applied = false;
+            // We continue applying to see other failures, or stop?
+            // Usually git am aborts on first failure. 
+            // But we are simulating application. If one fails, subsequent ones likely fail.
+            // But let's let the loop continue to fill results for attempted patches.
+            // If git am failed, worktree might be in bad state for next apply?
+            // apply_single_patch handles git am failure by trying git apply.
         }
     }
 
@@ -233,12 +157,68 @@ async fn main() -> Result<()> {
     };
 
     if all_applied {
+        // 2. Prepare worktree context if reviewing a specific patch
+        if let Some(target_idx) = args.review_patch_index {
+            // If we have patches after target_idx, we need to rewind.
+            // Even if target_idx is the last one, resetting and re-applying ensures clean state.
+            // But if target_idx is last, we already have the state.
+            // Optimization: Only reset if target_idx < max_index
+            let max_index = patches.iter().map(|p| p.index).max().unwrap_or(0);
+            
+            if target_idx < max_index {
+                info!("Resetting worktree to baseline to prepare context for patch {}...", target_idx);
+                if let Err(e) = worktree.reset_hard(&baseline_sha).await {
+                     error!("Failed to reset worktree: {}", e);
+                     // If reset fails, we can't proceed safely.
+                     // Report error.
+                     let result_json = json!({
+                        "patchset_id": patchset_id,
+                        "baseline": baseline_arg,
+                        "patches": patch_results,
+                        "error": format!("Failed to reset worktree: {}", e)
+                    });
+                    println!("{}", serde_json::to_string(&result_json)?);
+                    return Ok(());
+                }
+
+                info!("Re-applying patches up to index {}...", target_idx);
+                // We use dummy containers because we already have results/shas from validation pass
+                let mut dummy_results = Vec::new();
+                let mut dummy_shas = std::collections::HashMap::new();
+                let mut dummy_shows = std::collections::HashMap::new();
+                
+                let patches_subset: Vec<&PatchInput> = patches.iter().filter(|p| p.index <= target_idx).collect();
+                for p in patches_subset {
+                    let success = apply_single_patch(
+                        &worktree, 
+                        p, 
+                        &mut dummy_shas, 
+                        &mut dummy_shows, 
+                        &mut dummy_results
+                    ).await;
+                    
+                    if !success {
+                        // exquisite failure: worked first time, failed second?
+                        error!("Patch {} failed to apply on second pass!", p.index);
+                        let result_json = json!({
+                            "patchset_id": patchset_id,
+                            "baseline": baseline_arg,
+                            "patches": patch_results,
+                            "error": "Inconsistent patch application (failed on re-apply)"
+                        });
+                        println!("{}", serde_json::to_string(&result_json)?);
+                        return Ok(());
+                    }
+                }
+            }
+        }
+
         if patches_to_review.is_empty() {
             info!("No patches matched review index or list empty. Skipping AI review.");
             // Return success with patches status (even if we didn't review anything)
             let result_json = json!({
                 "patchset_id": patchset_id,
-                "baseline": baseline,
+                "baseline": baseline_arg,
                 "patches": patch_results,
                 "review": null, // Indicate no review
                 "input_context": "",
@@ -333,7 +313,7 @@ async fn main() -> Result<()> {
 
                     let result_json = json!({
                         "patchset_id": patchset_id,
-                        "baseline": baseline,
+                        "baseline": baseline_arg,
                         "patches": patch_results,
                         "review": result.output,
                         "error": result.error,
@@ -351,7 +331,7 @@ async fn main() -> Result<()> {
                     // Even on failure, we print what we have (patches status)
                     let result_json = json!({
                         "patchset_id": patchset_id,
-                        "baseline": baseline,
+                        "baseline": baseline_arg,
                         "patches": patch_results,
                         "error": e.to_string(),
                         "tokens_in": 0,
@@ -366,7 +346,7 @@ async fn main() -> Result<()> {
         info!("Not all patches applied successfully. Skipping AI review.");
         let result_json = json!({
             "patchset_id": patchset_id,
-            "baseline": baseline,
+            "baseline": baseline_arg,
             "patches": patch_results,
             "error": "Patch application failed"
         });
@@ -376,4 +356,105 @@ async fn main() -> Result<()> {
     worktree.remove().await?;
 
     Ok(())
+}
+
+async fn apply_single_patch(
+    worktree: &GitWorktree,
+    p: &PatchInput,
+    patch_shas: &mut std::collections::HashMap<i64, String>,
+    patch_shows: &mut std::collections::HashMap<i64, String>,
+    patch_results: &mut Vec<serde_json::Value>,
+) -> bool {
+    let mut applied_via_am = false;
+    let mut am_error = String::new();
+    let mut success = false;
+
+    if let (Some(author), Some(subject)) = (&p.author, &p.subject) {
+        // Try to construct mbox
+        let date_str = if let Some(ts) = p.date {
+            // Try format date using system date command
+            let output = std::process::Command::new("date")
+                .arg("-R")
+                .arg("-d")
+                .arg(format!("@{}", ts))
+                .output();
+            match output {
+                Ok(o) if o.status.success() => {
+                    String::from_utf8_lossy(&o.stdout).trim().to_string()
+                }
+                _ => String::new(), // Fallback to no date (git am uses current)
+            }
+        } else {
+            String::new()
+        };
+
+        let mbox = format!(
+            "From: {}\nDate: {}\nSubject: {}\n\n{}\n",
+            author, date_str, subject, p.diff
+        );
+
+        match worktree.apply_patch(&mbox).await {
+            Ok(_) => {
+                applied_via_am = true;
+                success = true;
+                if let Ok(sha) = sashiko::git_ops::get_commit_hash(&worktree.path, "HEAD").await
+                {
+                    patch_shas.insert(p.index, sha.clone());
+                    if let Ok(show) = worktree.get_commit_show(&sha).await {
+                        patch_shows.insert(p.index, show);
+                    }
+                }
+                patch_results.push(json!({
+                    "index": p.index,
+                    "status": "applied",
+                    "method": "git-am"
+                }));
+            }
+            Err(e) => {
+                info!("git am failed, falling back to git apply: {}", e);
+                am_error = e.to_string();
+            }
+        }
+    }
+
+    if !applied_via_am {
+        match worktree.apply_raw_diff(&p.diff).await {
+            Ok(output) => {
+                let status = if output.status.success() {
+                    success = true;
+                    "applied"
+                } else {
+                    "failed"
+                };
+                let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+                if status == "failed" {
+                    info!("Failed to apply patch {}: {}", p.index, stderr);
+                }
+
+                patch_results.push(json!({
+                    "index": p.index,
+                    "status": status,
+                    "method": "git-apply",
+                    "stdout": stdout,
+                    "stderr": stderr,
+                    "exit_code": output.status.code(),
+                    "am_error": if !am_error.is_empty() { Some(am_error) } else { None }
+                }));
+            }
+            Err(e) => {
+                info!("Error applying patch {}: {}", p.index, e);
+                patch_results.push(json!({
+                    "index": p.index,
+                    "status": "error",
+                    "method": "git-apply",
+                    "error": e.to_string(),
+                    "am_error": if !am_error.is_empty() { Some(am_error) } else { None }
+                }));
+            }
+        }
+    }
+    
+    success
 }
