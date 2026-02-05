@@ -20,7 +20,7 @@ use sashiko::reviewer::Reviewer;
 use sashiko::settings::Settings;
 use std::sync::Arc;
 use tokio::sync::{Semaphore, mpsc};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use tracing_subscriber::{EnvFilter, fmt};
 
 #[derive(Parser, Debug)]
@@ -574,9 +574,19 @@ async fn process_parsed_article(worker_db: &Database, article: ParsedArticle) ->
         .await
     {
         // Link to Mailing List
-        if let Ok(Some(list_id)) = worker_db.get_mailing_list_id_by_name(&group).await {
-            if let Err(e) = worker_db.add_message_to_mailing_list(msg_id_db, list_id).await {
-                error!("Failed to link message to mailing list: {}", e);
+        match worker_db.get_mailing_list_id_by_name(&group).await {
+            Ok(Some(list_id)) => {
+                if let Err(e) = worker_db.add_message_to_mailing_list(msg_id_db, list_id).await {
+                    error!("Failed to link message {} to list {}: {}", metadata.message_id, group, e);
+                } else {
+                    // info!("Linked message {} to list {}", metadata.message_id, group);
+                }
+            }
+            Ok(None) => {
+                warn!("Mailing list not found for group: {}", group);
+            }
+            Err(e) => {
+                error!("Failed to resolve mailing list for group {}: {}", group, e);
             }
         }
 

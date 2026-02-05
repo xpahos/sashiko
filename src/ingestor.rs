@@ -69,11 +69,13 @@ impl Ingestor {
             .mailing_lists
             .track
             .iter()
-            .map(|name| {
-                if name.contains('.') {
-                    (name.clone(), name.clone())
+            .map(|entry| {
+                if let Some((name, group)) = entry.split_once(':') {
+                    (name.to_string(), group.to_string())
+                } else if entry.contains('.') {
+                    (entry.clone(), entry.clone())
                 } else {
-                    (name.clone(), format!("org.kernel.vger.{}", name))
+                    (entry.clone(), format!("org.kernel.vger.{}", entry))
                 }
             })
             .collect()
