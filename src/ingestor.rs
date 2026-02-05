@@ -438,9 +438,17 @@ impl Ingestor {
     }
 
     async fn run_git_bootstrap(&self, limit: usize) -> Result<()> {
-        let mut remaining = limit;
+        let groups = self.get_tracked_groups();
+        if groups.is_empty() {
+            return Ok(());
+        }
 
-        for (name, group) in self.get_tracked_groups() {
+        // Split the total limit evenly across groups (ceiling division)
+        let limit_per_group = (limit + groups.len() - 1) / groups.len();
+
+        for (name, group) in groups {
+            let mut group_remaining = limit_per_group;
+
             // Ensure the mailing list exists in the DB so messages can be linked to it
             // We use &group because ensure_mailing_list expects &str
             if let Err(e) = self.db.ensure_mailing_list(&name, &group).await {
@@ -451,7 +459,7 @@ impl Ingestor {
             match self.resolve_git_info(&group).await {
                 Ok((epochs, base_path)) => {
                     for (epoch, url) in epochs {
-                        if remaining == 0 {
+                        if group_remaining == 0 {
                             break;
                         }
 
@@ -461,17 +469,17 @@ impl Ingestor {
                             group, epoch, url, epoch_path
                         );
 
-                        if let Err(e) = self.bootstrap_repo(&url, &epoch_path, remaining).await {
+                        if let Err(e) = self.bootstrap_repo(&url, &epoch_path, group_remaining).await {
                             error!("Failed to bootstrap group {} epoch {}: {}", group, epoch, e);
                             continue;
                         } else {
                             match self
-                                .ingest_git_objects(&group, &epoch_path, Some(remaining))
+                                .ingest_git_objects(&group, &epoch_path, Some(group_remaining))
                                 .await
                             {
                                 Ok(count) => {
                                     info!("Ingested {} messages from epoch {}", count, epoch);
-                                    remaining = remaining.saturating_sub(count);
+                                    group_remaining = group_remaining.saturating_sub(count);
                                 }
                                 Err(e) => {
                                     error!(
