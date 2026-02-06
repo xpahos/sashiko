@@ -469,7 +469,10 @@ impl Ingestor {
                             group, epoch, url, epoch_path
                         );
 
-                        if let Err(e) = self.bootstrap_repo(&url, &epoch_path, group_remaining).await {
+                        if let Err(e) = self
+                            .bootstrap_repo(&url, &epoch_path, group_remaining)
+                            .await
+                        {
                             error!("Failed to bootstrap group {} epoch {}: {}", group, epoch, e);
                             continue;
                         } else {
@@ -654,10 +657,7 @@ impl Ingestor {
     }
     async fn run_nntp(&self) -> Result<()> {
         let groups = self.get_tracked_groups();
-        info!(
-            "Starting NNTP Ingestor for groups: {:?}",
-            groups
-        );
+        info!("Starting NNTP Ingestor for groups: {:?}", groups);
 
         loop {
             if let Err(e) = self.process_nntp_cycle().await {

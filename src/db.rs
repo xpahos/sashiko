@@ -384,7 +384,7 @@ impl Database {
         let _ = self
             .try_create_index("idx_tool_usages_review", "tool_usages", "review_id")
             .await;
-        
+
         // Manual migration for messages_mailing_lists
         let _ = self
             .conn
@@ -399,7 +399,7 @@ impl Database {
                 (),
             )
             .await;
-            
+
         // Backfill messages_mailing_lists from messages.mailing_list
         let _ = self
             .conn
@@ -432,7 +432,11 @@ impl Database {
         }
     }
 
-    pub async fn add_message_to_mailing_list(&self, message_id: i64, mailing_list_id: i64) -> Result<()> {
+    pub async fn add_message_to_mailing_list(
+        &self,
+        message_id: i64,
+        mailing_list_id: i64,
+    ) -> Result<()> {
         self.conn
             .execute(
                 "INSERT OR IGNORE INTO messages_mailing_lists (message_id, mailing_list_id) VALUES (?, ?)",
@@ -443,7 +447,10 @@ impl Database {
     }
 
     pub async fn get_mailing_lists(&self) -> Result<Vec<(String, String)>> {
-        let mut rows = self.conn.query("SELECT name, nntp_group FROM mailing_lists", ()).await?;
+        let mut rows = self
+            .conn
+            .query("SELECT name, nntp_group FROM mailing_lists", ())
+            .await?;
         let mut lists = Vec::new();
         while let Ok(Some(row)) = rows.next().await {
             lists.push((row.get(0)?, row.get(1)?));
@@ -2012,7 +2019,8 @@ impl Database {
                 if target == "patchset" {
                     // Filter patchsets where any patch OR the cover letter is in the mailing list
                     // We use p.id to avoid ambiguity with joined tables (e.g. subsystems.id)
-                    conditions.push("p.id IN (
+                    conditions.push(
+                        "p.id IN (
                         SELECT patchset_id FROM patches p2 
                         JOIN messages m ON p2.message_id = m.message_id 
                         JOIN messages_mailing_lists mml ON m.id = mml.message_id 
@@ -2024,7 +2032,9 @@ impl Database {
                         JOIN messages_mailing_lists mml ON m.id = mml.message_id 
                         JOIN mailing_lists ml ON mml.mailing_list_id = ml.id 
                         WHERE ml.nntp_group = ?
-                    )".to_string());
+                    )"
+                        .to_string(),
+                    );
                     params.push(list.clone());
                     params.push(list);
                 } else {
@@ -2199,7 +2209,11 @@ impl Database {
         Ok(messages)
     }
 
-    pub async fn count_patchsets(&self, query: Option<String>, mailing_list: Option<String>) -> Result<usize> {
+    pub async fn count_patchsets(
+        &self,
+        query: Option<String>,
+        mailing_list: Option<String>,
+    ) -> Result<usize> {
         let (where_clause, params) = self.build_search(query, mailing_list, "patchset");
         // We must alias patchsets as p because build_search uses p.id for filters
         let sql = format!("SELECT COUNT(*) FROM patchsets p {}", where_clause);
@@ -2218,7 +2232,11 @@ impl Database {
         }
     }
 
-    pub async fn count_messages(&self, query: Option<String>, mailing_list: Option<String>) -> Result<usize> {
+    pub async fn count_messages(
+        &self,
+        query: Option<String>,
+        mailing_list: Option<String>,
+    ) -> Result<usize> {
         let (where_clause, params) = self.build_search(query, mailing_list, "message");
         let sql = format!("SELECT COUNT(*) FROM messages {}", where_clause);
 
@@ -2434,11 +2452,11 @@ impl Database {
     pub async fn get_patch_diffs(
         &self,
         patchset_id: i64,
-    ) -> Result<Vec<(i64, i64, String, String, String, i64)>> {
+    ) -> Result<Vec<(i64, i64, String, String, String, i64, String)>> {
         let mut rows = self
             .conn
             .query(
-                "SELECT p.id, p.part_index, p.diff, m.subject, m.author, m.date 
+                "SELECT p.id, p.part_index, p.diff, m.subject, m.author, m.date, m.message_id 
              FROM patches p 
              JOIN messages m ON p.message_id = m.message_id 
              WHERE p.patchset_id = ? 
@@ -2455,7 +2473,8 @@ impl Database {
             let subject: String = row.get(3).unwrap_or_default();
             let author: String = row.get(4).unwrap_or_default();
             let date: i64 = row.get(5).unwrap_or(0);
-            diffs.push((id, index, diff, subject, author, date));
+            let message_id: String = row.get(6)?;
+            diffs.push((id, index, diff, subject, author, date, message_id));
         }
         Ok(diffs)
     }
@@ -4186,8 +4205,16 @@ mod tests {
         // 1. Setup lists
         db.ensure_mailing_list("List A", "list-a").await.unwrap();
         db.ensure_mailing_list("List B", "list-b").await.unwrap();
-        let id_a = db.get_mailing_list_id_by_name("list-a").await.unwrap().unwrap();
-        let id_b = db.get_mailing_list_id_by_name("list-b").await.unwrap().unwrap();
+        let id_a = db
+            .get_mailing_list_id_by_name("list-a")
+            .await
+            .unwrap()
+            .unwrap();
+        let id_b = db
+            .get_mailing_list_id_by_name("list-b")
+            .await
+            .unwrap()
+            .unwrap();
 
         // 2. Create threads
         let t_a = db.create_thread("root_a", "Subject A", 100).await.unwrap();
@@ -4195,35 +4222,103 @@ mod tests {
 
         // 3. Create Message A (in List A)
         db.create_message(
-            "msg_a", t_a, None, "Author", "Subject A", 100, "", "", "", None, Some("list-a")
-        ).await.unwrap();
+            "msg_a",
+            t_a,
+            None,
+            "Author",
+            "Subject A",
+            100,
+            "",
+            "",
+            "",
+            None,
+            Some("list-a"),
+        )
+        .await
+        .unwrap();
         let msg_a_id = db.get_message_id_by_msg_id("msg_a").await.unwrap().unwrap();
-        db.add_message_to_mailing_list(msg_a_id, id_a).await.unwrap();
+        db.add_message_to_mailing_list(msg_a_id, id_a)
+            .await
+            .unwrap();
 
         // 4. Create Message B (in List B)
         db.create_message(
-            "msg_b", t_b, None, "Author", "Subject B", 100, "", "", "", None, Some("list-b")
-        ).await.unwrap();
+            "msg_b",
+            t_b,
+            None,
+            "Author",
+            "Subject B",
+            100,
+            "",
+            "",
+            "",
+            None,
+            Some("list-b"),
+        )
+        .await
+        .unwrap();
         let msg_b_id = db.get_message_id_by_msg_id("msg_b").await.unwrap().unwrap();
-        db.add_message_to_mailing_list(msg_b_id, id_b).await.unwrap();
+        db.add_message_to_mailing_list(msg_b_id, id_b)
+            .await
+            .unwrap();
 
         // 5. Create Patchsets
         // Patchset A linked to msg_a (as cover letter)
-        let ps_a = db.create_patchset(
-            t_a, Some("msg_a"), "msg_a", "Subject A", "Author", 100, 1, 1, "", "", None, 0, None, true
-        ).await.unwrap().unwrap();
+        let ps_a = db
+            .create_patchset(
+                t_a,
+                Some("msg_a"),
+                "msg_a",
+                "Subject A",
+                "Author",
+                100,
+                1,
+                1,
+                "",
+                "",
+                None,
+                0,
+                None,
+                true,
+            )
+            .await
+            .unwrap()
+            .unwrap();
 
         // Patchset B linked to msg_b (as cover letter)
-        let ps_b = db.create_patchset(
-            t_b, Some("msg_b"), "msg_b", "Subject B", "Author", 100, 1, 1, "", "", None, 0, None, true
-        ).await.unwrap().unwrap();
+        let ps_b = db
+            .create_patchset(
+                t_b,
+                Some("msg_b"),
+                "msg_b",
+                "Subject B",
+                "Author",
+                100,
+                1,
+                1,
+                "",
+                "",
+                None,
+                0,
+                None,
+                true,
+            )
+            .await
+            .unwrap()
+            .unwrap();
 
         // 6. Test filtering messages
-        let msgs_a = db.get_messages(10, 0, None, Some("list-a".to_string())).await.unwrap();
+        let msgs_a = db
+            .get_messages(10, 0, None, Some("list-a".to_string()))
+            .await
+            .unwrap();
         assert_eq!(msgs_a.len(), 1);
         assert_eq!(msgs_a[0].message_id, "msg_a");
 
-        let msgs_b = db.get_messages(10, 0, None, Some("list-b".to_string())).await.unwrap();
+        let msgs_b = db
+            .get_messages(10, 0, None, Some("list-b".to_string()))
+            .await
+            .unwrap();
         assert_eq!(msgs_b.len(), 1);
         assert_eq!(msgs_b[0].message_id, "msg_b");
 
@@ -4239,11 +4334,17 @@ mod tests {
         // UPDATE: We commented out the patch creation above.
         // ps_a only has a cover letter in list-a.
         // The UNION query should find it.
-        let psets_a = db.get_patchsets(10, 0, None, Some("list-a".to_string())).await.unwrap();
+        let psets_a = db
+            .get_patchsets(10, 0, None, Some("list-a".to_string()))
+            .await
+            .unwrap();
         assert_eq!(psets_a.len(), 1);
         assert_eq!(psets_a[0].id, ps_a);
 
-        let psets_b = db.get_patchsets(10, 0, None, Some("list-a".to_string())).await.unwrap();
+        let psets_b = db
+            .get_patchsets(10, 0, None, Some("list-a".to_string()))
+            .await
+            .unwrap();
         let found_b = psets_b.iter().any(|p| p.id == ps_b);
         assert!(!found_b);
     }

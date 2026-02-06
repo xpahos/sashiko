@@ -61,7 +61,7 @@ struct PatchInput {
     author: Option<String>,
     date: Option<i64>,
     #[serde(default)]
-    commit_id: Option<String>,
+    message_id: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -266,9 +266,9 @@ async fn main() -> Result<()> {
                                     }
                                 })
                                 .unwrap_or_default()
-                            } else {
-                                String::new()
-                            };
+                        } else {
+                            String::new()
+                        };
 
                         json!({
                             "subject": p.subject,
@@ -408,7 +408,8 @@ async fn main() -> Result<()> {
             println!("{}", serde_json::to_string(&result_json)?);
         }
         Ok(())
-    }.await;
+    }
+    .await;
 
     if let Err(e) = worktree.remove().await {
         error!("Failed to remove worktree: {}", e);
@@ -424,6 +425,49 @@ async fn apply_single_patch(
     patch_shows: &mut std::collections::HashMap<i64, String>,
     patch_results: &mut Vec<serde_json::Value>,
 ) -> bool {
+    // Check if message_id is a valid commit SHA available in the repo
+    if let Some(sha) = &p.message_id {
+        if sha.len() == 40 && sha.chars().all(|c| c.is_ascii_hexdigit()) {
+            // Check if object exists
+            let status = std::process::Command::new("git")
+                .current_dir(&worktree.path)
+                .args(["cat-file", "-e", &format!("{}^{{commit}}", sha)])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status();
+
+            if let Ok(s) = status {
+                if s.success() {
+                    info!(
+                        "Patch {} is a valid commit {}, checking out directly...",
+                        p.index, sha
+                    );
+                    if let Err(e) = worktree.reset_hard(sha).await {
+                        error!("Failed to checkout commit {}: {}", sha, e);
+                        patch_results.push(json!({
+                            "index": p.index,
+                            "status": "error",
+                            "method": "checkout",
+                            "error": e.to_string()
+                        }));
+                        return false;
+                    }
+
+                    if let Ok(show) = worktree.get_commit_show(sha).await {
+                        patch_shows.insert(p.index, show);
+                    }
+                    patch_shas.insert(p.index, sha.clone());
+                    patch_results.push(json!({
+                        "index": p.index,
+                        "status": "applied",
+                        "method": "checkout"
+                    }));
+                    return true;
+                }
+            }
+        }
+    }
+
     let mut applied_via_am = false;
     let mut am_error = String::new();
     let mut success = false;
@@ -515,4 +559,103 @@ async fn apply_single_patch(
     }
 
     success
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::File;
+    use std::io::Write;
+    use std::process::Command;
+
+    #[tokio::test]
+    async fn test_apply_single_patch_remote_checkout() -> Result<()> {
+        // 1. Setup a dummy repo
+        let temp_dir = tempfile::tempdir()?;
+        let repo_path = temp_dir.path().to_path_buf();
+
+        Command::new("git")
+            .current_dir(&repo_path)
+            .arg("init")
+            .output()?;
+        Command::new("git")
+            .current_dir(&repo_path)
+            .args(["config", "user.email", "test@example.com"])
+            .output()?;
+        Command::new("git")
+            .current_dir(&repo_path)
+            .args(["config", "user.name", "Test User"])
+            .output()?;
+
+        // Initial commit
+        let file_path = repo_path.join("file.txt");
+        let mut file = File::create(&file_path)?;
+        writeln!(file, "Initial")?;
+        Command::new("git")
+            .current_dir(&repo_path)
+            .args(["add", "."])
+            .output()?;
+        Command::new("git")
+            .current_dir(&repo_path)
+            .args(["commit", "-m", "Initial"])
+            .output()?;
+
+        let initial_sha = sashiko::git_ops::get_commit_hash(&repo_path, "HEAD").await?;
+
+        // Second commit (The one we want to checkout)
+        writeln!(file, "Change")?;
+        Command::new("git")
+            .current_dir(&repo_path)
+            .args(["add", "."])
+            .output()?;
+        Command::new("git")
+            .current_dir(&repo_path)
+            .args(["commit", "-m", "Feature"])
+            .output()?;
+
+        let feature_sha = sashiko::git_ops::get_commit_hash(&repo_path, "HEAD").await?;
+
+        // 2. Setup Worktree on Initial commit (Baseline)
+        let worktree = GitWorktree::new(&repo_path, &initial_sha, None).await?;
+
+        // 3. Prepare PatchInput with feature_sha as message_id and BROKEN diff
+        // We use a broken diff to prove that the code ignores it and successfully
+        // checks out the commit by SHA. If it fell back to patching, it would fail.
+        let patch = PatchInput {
+            index: 1,
+            diff: "INVALID DIFF content that would fail git apply".to_string(),
+            subject: Some("Feature".to_string()),
+            author: Some("Test User <test@example.com>".to_string()),
+            date: None,
+            message_id: Some(feature_sha.clone()),
+        };
+
+        let mut patch_shas = std::collections::HashMap::new();
+        let mut patch_shows = std::collections::HashMap::new();
+        let mut patch_results = Vec::new();
+
+        // 4. Run apply_single_patch
+        let success = apply_single_patch(
+            &worktree,
+            &patch,
+            &mut patch_shas,
+            &mut patch_shows,
+            &mut patch_results,
+        )
+        .await;
+
+        // 5. Verify
+        assert!(success, "Should succeed via checkout despite invalid diff");
+
+        // Check result JSON
+        let result = &patch_results[0];
+        assert_eq!(result["status"], "applied");
+        assert_eq!(result["method"], "checkout");
+
+        // Verify worktree content matches feature commit
+        let content = std::fs::read_to_string(worktree.path.join("file.txt"))?;
+        assert!(content.contains("Change"));
+
+        Ok(())
+    }
 }

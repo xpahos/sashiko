@@ -336,13 +336,16 @@ async fn list_mailing_lists(
         error!("Failed to get mailing lists: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
-    
-    let result = lists.into_iter().map(|(name, group)| {
-        serde_json::json!({
-            "name": name,
-            "group": group
+
+    let result = lists
+        .into_iter()
+        .map(|(name, group)| {
+            serde_json::json!({
+                "name": name,
+                "group": group
+            })
         })
-    }).collect();
+        .collect();
 
     Ok(Json(result))
 }
@@ -357,7 +360,12 @@ async fn list_patchsets(
 
     let items = state
         .db
-        .get_patchsets(per_page, offset, pagination.q.clone(), pagination.mailing_list.clone())
+        .get_patchsets(
+            per_page,
+            offset,
+            pagination.q.clone(),
+            pagination.mailing_list.clone(),
+        )
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let total = state
@@ -384,7 +392,12 @@ async fn list_messages(
 
     let items = state
         .db
-        .get_messages(per_page, offset, pagination.q.clone(), pagination.mailing_list.clone())
+        .get_messages(
+            per_page,
+            offset,
+            pagination.q.clone(),
+            pagination.mailing_list.clone(),
+        )
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let total = state

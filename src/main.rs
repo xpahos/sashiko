@@ -167,7 +167,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Parser Dispatcher
     let semaphore = Arc::new(Semaphore::new(50));
-    
+
     // Determine ingestion cutoff timestamp
     // If --download is passed, we accept everything (cutoff = None).
     // If --download is NOT passed:
@@ -191,7 +191,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Err(e) => {
                 error!("Failed to get oldest message timestamp: {}", e);
-                // Fallback to safe default? Or fail? 
+                // Fallback to safe default? Or fail?
                 // Let's assume now to be safe and avoid flooding.
                 let now = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -627,8 +627,14 @@ async fn process_parsed_article(worker_db: &Database, article: ParsedArticle) ->
         // Link to Mailing List
         match worker_db.get_mailing_list_id_by_name(&group).await {
             Ok(Some(list_id)) => {
-                if let Err(e) = worker_db.add_message_to_mailing_list(msg_id_db, list_id).await {
-                    error!("Failed to link message {} to list {}: {}", metadata.message_id, group, e);
+                if let Err(e) = worker_db
+                    .add_message_to_mailing_list(msg_id_db, list_id)
+                    .await
+                {
+                    error!(
+                        "Failed to link message {} to list {}: {}",
+                        metadata.message_id, group, e
+                    );
                 } else {
                     // info!("Linked message {} to list {}", metadata.message_id, group);
                 }
