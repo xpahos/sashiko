@@ -375,6 +375,7 @@ impl ToolBox {
         let output = Command::new("git")
             .current_dir(&self.worktree_path)
             .arg("diff")
+            .arg("--diff-algorithm=histogram")
             .args(&diff_args_str)
             .output()
             .await?;

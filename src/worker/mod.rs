@@ -166,7 +166,6 @@ impl Worker {
                     patch_content.push_str(show);
                 } else {
                     let subject = p["subject"].as_str().unwrap_or("No Subject");
-                    let diff = p["diff"].as_str().unwrap_or("");
                     let author = p["author"].as_str().unwrap_or("Unknown");
                     let date = p["date_string"].as_str().unwrap_or("");
                     let commit_id = p["commit_id"]
@@ -181,7 +180,6 @@ impl Worker {
                     patch_content.push('\n');
                     // Indent subject by 4 spaces
                     patch_content.push_str(&format!("    {}\n\n", subject));
-                    patch_content.push_str(diff);
                 }
 
                 patch_content.push_str("\n```\n\n");
@@ -193,6 +191,7 @@ impl Worker {
 
         initial_user_message.push('\n');
         initial_user_message.push_str(&truncated_patch);
+        initial_user_message.push_str("\nThe diff content is omitted. You are reviewing the currently checked out commit. Use `git_diff` (with histogram algorithm enabled by default) and other tools to analyze the changes.\n");
 
         let input_context = format!(
             "System: {}\n\nUser: {}",
