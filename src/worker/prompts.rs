@@ -89,26 +89,12 @@ impl PromptRegistry {
         if use_cache {
             Ok(format!("{}\nAnalyze the provided patch:", SYSTEM_IDENTITY))
         } else {
-            let review_core = self.get_review_core().await?;
-            let inline_template_path = self.base_dir.join("inline-template.md");
-            let inline_template = if inline_template_path.exists() {
-                format!(
-                    "## inline-template.md\n{}\n\n",
-                    fs::read_to_string(&inline_template_path).await?
-                )
-            } else {
-                String::new()
-            };
-
             Ok(format!(
-                "{} Using the prompt kernel/review-core.md run a deep dive regression analysis of the top commit in the Linux source tree.\n\n\
-                 ## Review Protocol (review-core.md)\n\
-                 {}\n\n\
-                 {}\
+                "{} Using the prompt review-core.md run a deep dive regression analysis of the top commit in the Linux source tree.\n\n\
                  # Task\n\
                  {}\n\n\
                  Analyze the provided patch:",
-                SYSTEM_IDENTITY, review_core, inline_template, TASK_INSTRUCTION
+                SYSTEM_IDENTITY, TASK_INSTRUCTION
             ))
         }
     }
@@ -356,8 +342,9 @@ mod tests {
         let prompt = registry.get_user_task_prompt(false).await.unwrap();
 
         assert!(prompt.contains(SYSTEM_IDENTITY));
-        assert!(prompt.contains("## Review Protocol"));
-        assert!(prompt.contains("Protocol content"));
+        assert!(!prompt.contains("## Review Protocol"));
+        assert!(!prompt.contains("Protocol content"));
+        assert!(prompt.contains("Using the prompt review-core.md"));
     }
 
     #[tokio::test]
@@ -433,7 +420,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_user_task_prompt_non_cached_includes_inline_template() {
+    async fn test_user_task_prompt_non_cached_excludes_inline_template() {
         let temp_dir = tempfile::tempdir().unwrap();
         std::fs::write(temp_dir.path().join("review-core.md"), "Protocol").unwrap();
         std::fs::write(
@@ -445,7 +432,7 @@ mod tests {
         let registry = PromptRegistry::new(temp_dir.path().to_path_buf());
         let prompt = registry.get_user_task_prompt(false).await.unwrap();
 
-        assert!(prompt.contains("## inline-template.md"));
-        assert!(prompt.contains("Inline Template Content"));
+        // Check content is not present
+        assert!(!prompt.contains("Inline Template Content"));
     }
 }
