@@ -24,7 +24,6 @@ use crate::ai::gemini::{
     GenerateContentWithCacheRequest, GenerationConfig, Part,
 };
 use crate::ai::token_budget::TokenBudget;
-use crate::ai::truncator::Truncator;
 use crate::worker::prompts::PromptRegistry;
 use crate::worker::tools::ToolBox;
 use anyhow::Result;
@@ -186,11 +185,7 @@ impl Worker {
             }
         }
 
-        // Truncate if too large.
-        let truncated_patch = Truncator::truncate_diff(&patch_content, self.max_input_tokens);
-
-        initial_user_message.push('\n');
-        initial_user_message.push_str(&truncated_patch);
+        initial_user_message.push_str("\nThe diff content is omitted. You are reviewing the currently checked out commit. Use `git_diff` and other tools to analyze the changes.\n");
 
         let input_context = format!(
             "System: {}\n\nUser: {}",
