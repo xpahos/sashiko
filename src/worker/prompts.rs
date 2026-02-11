@@ -20,10 +20,8 @@ use tokio::fs;
 /// System identity prompt - used across all AI interactions
 pub const SYSTEM_IDENTITY: &str = "You're an expert Linux kernel developer and upstream maintainer with deep knowledge of Linux kernel, Operating Systems, CPU architectures, modern hardware and Linux kernel community standards and processes.";
 
-pub const TASK_INSTRUCTION: &str = "Run a deep dive regression analysis of the top commit in the Linux source tree.\n\n\
-Follow the Review Protocol and all Technical patterns and Subsystem Guidelines available in your context.\n\n\
-You must produce the following outputs:\n\
-1. 'review-inline.txt': If you have ANY findings (count > 0), regardless of severity. This file *MUST* follow the format and guidelines provided in the '## inline-template.md' section.\n\
+pub const TASK_INSTRUCTION: &str = "You must produce the following outputs:\n\
+1. 'review-inline.txt': If you have ANY findings (count > 0), regardless of severity. This file *MUST* follow the format and guidelines provided in `inline-template.md`.\n\
 2. Final JSON Output: Your final response must be a valid JSON object strictly following the schema below. \
 Ignore any previous instructions to generate a separate 'review-metadata.json' file; only provide this JSON in your final response.\n\n\
 JSON Output Schema:\n\
@@ -50,7 +48,6 @@ const EXCLUDED_FILES: &[&str] = &[
     "review-stat.md",
     "debugging.md",
     "lore-thread.md",
-    "inline-template.md",
 ];
 
 pub struct PromptRegistry {
@@ -87,13 +84,11 @@ impl PromptRegistry {
     /// so we don't include review-core.md content.
     pub async fn get_user_task_prompt(&self, use_cache: bool) -> Result<String> {
         if use_cache {
-            Ok(format!("{}\nAnalyze the provided patch:", SYSTEM_IDENTITY))
+            Ok(SYSTEM_IDENTITY.to_string())
         } else {
             Ok(format!(
                 "{} Using the prompt review-core.md run a deep dive regression analysis of the top commit in the Linux source tree.\n\n\
-                 # Task\n\
-                 {}\n\n\
-                 Analyze the provided patch:",
+                 {}",
                 SYSTEM_IDENTITY, TASK_INSTRUCTION
             ))
         }
@@ -200,15 +195,10 @@ impl PromptRegistry {
         }
 
         // 7. Inline Template
-        let inline_template_path = self.base_dir.join("inline-template.md");
-        if inline_template_path.exists() {
-            context.push_str("## inline-template.md\n");
-            context.push_str(&fs::read_to_string(&inline_template_path).await?);
-            context.push_str("\n\n");
-        }
+        // (inline-template.md is now included in step 4 via fs::read_dir as it is not in EXCLUDED_FILES)
 
         // 8. Task Instruction
-        context.push_str("\n\n# Task\n\n");
+        context.push_str("\n\n");
         context.push_str(TASK_INSTRUCTION);
 
         Ok(context)
@@ -328,7 +318,7 @@ mod tests {
         let prompt = registry.get_user_task_prompt(true).await.unwrap();
 
         assert!(prompt.contains(SYSTEM_IDENTITY));
-        assert!(prompt.contains("Analyze the provided patch"));
+        assert!(!prompt.contains("Analyze the provided patch")); // Removed
         assert!(!prompt.contains("regression analysis")); // It was moved to cache
         assert!(!prompt.contains("## Review Protocol")); // No embedded protocol in cached mode
     }
@@ -391,7 +381,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().unwrap();
         let registry = PromptRegistry::new(temp_dir.path().to_path_buf());
         let context = registry.build_context().await.unwrap();
-        assert!(context.contains("Run a deep dive regression analysis"));
+        assert!(context.contains("You must produce the following outputs"));
     }
 
     #[tokio::test]
@@ -410,13 +400,6 @@ mod tests {
 
         // Check if inline-template.md content is present
         assert!(context.contains("INLINE TEMPLATE CONTENT"));
-
-        // Check order: INLINE TEMPLATE CONTENT should be after other files and before Task
-        // Let's rely on string finding indices
-        let inline_idx = context.find("INLINE TEMPLATE CONTENT").unwrap();
-        let task_idx = context.find("# Task").unwrap();
-
-        assert!(inline_idx < task_idx);
     }
 
     #[tokio::test]

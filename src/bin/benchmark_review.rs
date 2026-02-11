@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tracing::{error, info, warn};
 use tracing_subscriber::{EnvFilter, fmt};
 
@@ -318,10 +318,7 @@ async fn process_entry(
     };
 
     let found = status == "DETECTED" || status == "PARTIALLY_DETECTED";
-    info!(
-        "Commit {}: {} ({})",
-        entry.commit, status, explanation
-    );
+    info!("Commit {}: {} ({})", entry.commit, status, explanation);
 
     BenchmarkResult {
         commit: entry.commit,

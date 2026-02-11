@@ -3817,14 +3817,7 @@ mod tests {
 
         // 2. Failed Review (No interaction) -> Should be detected
         let review_id = db
-            .create_review(
-                ps_id,
-                Some(patch_id),
-                "gemini",
-                "test-model",
-                None,
-                None,
-            )
+            .create_review(ps_id, Some(patch_id), "gemini", "test-model", None, None)
             .await
             .unwrap();
         db.update_review_status(review_id, "FailedToApply", None)

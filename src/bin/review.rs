@@ -150,7 +150,7 @@ async fn main() -> Result<()> {
                 // We assume the caller has already validated the series and applied it.
                 // We just checkout the specific commit.
                 // Note: The commit must exist in the repo (shared object store).
-                
+
                 // Fetch/Checkout logic for worktree
                 // GitWorktree::new checks out 'baseline' initially.
                 // We need to fetch/reset to the specific commit.
