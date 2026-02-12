@@ -20,7 +20,7 @@ use tokio::fs;
 /// System identity prompt - used across all AI interactions
 pub const SYSTEM_IDENTITY: &str = "You're an expert Linux kernel developer and upstream maintainer with deep knowledge of Linux kernel, Operating Systems, CPU architectures, modern hardware and Linux kernel community standards and processes.";
 
-pub const OUTPUT_FORMAT_INSTRUCTION: &str = "Important: If you have ANY findings, you *MUST* produce the `review-inline.txt` file. This file *MUST* follow the format and guidelines provided in `inline-template.md`. Once you generated requested files, produce the final JSON response.";
+pub const OUTPUT_FORMAT_INSTRUCTION: &str = "Important: If you have ANY findings, you *MUST* produce the `review-inline.txt` file. This file *MUST* follow the format and guidelines provided in `inline-template.md`. Once you generated the correct `review-inline.txt`, produce the JSON response described by response_schema to finish your task. Do not generate `review-metadata.json`, it's not required";
 
 pub struct PromptRegistry {
     base_dir: PathBuf,
