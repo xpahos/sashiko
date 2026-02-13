@@ -15,17 +15,15 @@ Sashiko is an automated system designed to assist in the review of Linux kernel 
 
 ## Prompts
 
-Sashiko relies on the set of carefully crafted prompts to guide the AI in its reviews. These prompts were initially created by Chris Mason and are developed by the community of developers in a separate repository:
+Sashiko is based on the set of carefully crafted prompts to guide the AI in its reviews. These prompts were initially created by Chris Mason and are developed by the community of developers in a separate repository:
 
 *   [**review-prompts**](https://github.com/masoncl/review-prompts)
-
-This repository is included as a submodule in the `third_party/review-prompts/` directory.
 
 ## Prerequisites
 
 - **Rust**: Version 1.86 or later.
 - **Git**: For managing the repository and kernel tree.
-- **Gemini API Key**: Access to Google's Gemini models (other models can be used, but it's not tested and might require some minimal code changes)
+- **LLM Provider API Key**: Access to an LLM provider (e.g., Google's Gemini).
 
 ## Setup
 
@@ -40,14 +38,32 @@ This repository is included as a submodule in the `third_party/review-prompts/` 
     Copy `Settings.toml` to customize your configuration. The default `Settings.toml` includes sections for:
     *   **Database**: SQLite database path (`sashiko.db`).
     *   **NNTP**: Server details and groups to monitor.
-    *   **AI**: Provider (Gemini), model selection, and token limits.
+    *   **AI**: Provider and model selection.
     *   **Server**: API server host and port.
     *   **Git**: Path to the reference kernel repository.
     *   **Review**: Concurrency and worktree settings.
 
-    You can also configure settings via environment variables using the `SASHIKO` prefix and double underscores for nesting (e.g., `SASHIKO_SERVER__PORT=8081`).
+    ### Configuring the LLM Provider
 
-    **Important**: You must set your Gemini API key. This is typically done via an environment variable, depending on the underlying client library, or potentially in a secrets file if supported. Ensure your environment has the necessary credentials loaded.
+    Sashiko supports multiple LLM providers (e.g. `gemini`). You must configure the provider and model in `Settings.toml`. There are no default values, so please set them explicitly.
+
+    Example `Settings.toml` configuration for Gemini:
+
+    ```toml
+    [ai]
+    provider = "gemini"
+    model = "gemini-3-pro-preview"
+    # Optional settings
+    # max_input_tokens = 950000
+    # temperature = 1.0
+    ```
+
+    You can also configure settings via environment variables using the `SASHIKO` prefix and double underscores for nesting (e.g., `SASHIKO_AI__PROVIDER=gemini`).
+
+    **Important**: You must set the `LLM_API_KEY` environment variable with your provider's API key.
+    ```bash
+    export LLM_API_KEY="your_api_key_here"
+    ```
 
 3.  **Build**:
     ```bash
@@ -63,30 +79,6 @@ cargo run --release
 ```
 
 This will start the Sashiko daemon, which will begin ingesting and reviewing patches based on your configuration.
-
-## Benchmarking
-
-Sashiko includes a benchmarking suite to evaluate the effectiveness of its AI reviews against known kernel bugs. The benchmark uses a dataset of commits (`benchmark.json`) where bugs were fixed, and checks if Sashiko can identify the issues in the original buggy commits.
-
-1.  **Start the Sashiko Server**:
-    Ensure the main application is running to handle ingestion requests.
-    ```bash
-    cargo run --release
-    ```
-
-2.  **Ingest Benchmark Data**:
-    In a separate terminal, run the ingestion tool to submit the benchmark commits to the running server.
-    ```bash
-    cargo run --release --bin ingest_benchmark
-    ```
-    This reads `benchmark.json` and submits each commit to the local Sashiko instance for review. Wait for the server to process these reviews (check the server logs).
-
-3.  **Run Evaluation**:
-    Once the reviews are complete, run the evaluation tool. This compares the AI's findings against the ground truth in `benchmark.json`.
-    ```bash
-    cargo run --release --bin benchmark_review
-    ```
-    The results will be printed to the console and saved to `benchmark_results.json`.
 
 ## Contributing
 
