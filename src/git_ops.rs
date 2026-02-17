@@ -565,13 +565,161 @@ pub async fn get_git_log(params: GitLogParams) -> Result<String> {
     }
 }
 
+pub async fn git_status(repo_path: &Path) -> Result<String> {
+    let output = Command::new("git")
+        .current_dir(repo_path)
+        .args(["status"])
+        .output()
+        .await?;
 
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(anyhow!(
+            "git status failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ))
+    }
+}
+
+pub async fn git_checkout(repo_path: &Path, target: &str) -> Result<()> {
+    let output = Command::new("git")
+        .current_dir(repo_path)
+        .args(["checkout", target])
+        .output()
+        .await?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "git checkout failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ))
+    }
+}
+
+pub async fn git_branch(repo_path: &Path) -> Result<String> {
+    let output = Command::new("git")
+        .current_dir(repo_path)
+        .args(["branch", "--list", "--all"])
+        .output()
+        .await?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(anyhow!(
+            "git branch failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ))
+    }
+}
+
+pub async fn git_tag(repo_path: &Path) -> Result<String> {
+    let output = Command::new("git")
+        .current_dir(repo_path)
+        .args(["tag", "--list"])
+        .output()
+        .await?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(anyhow!(
+            "git tag failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ))
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs::File;
     use std::io::Write;
+
+    #[tokio::test]
+    async fn test_git_ops_extensions() -> Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let repo_path = temp_dir.path().to_path_buf();
+
+        // Init git repo
+        Command::new("git")
+            .current_dir(&repo_path)
+            .args(["init"])
+            .output()
+            .await?;
+
+        // Ensure we are on master
+        let _ = Command::new("git")
+            .current_dir(&repo_path)
+            .args(["branch", "-m", "master"])
+            .output()
+            .await;
+
+        Command::new("git")
+            .current_dir(&repo_path)
+            .args(["config", "user.email", "test@example.com"])
+            .output()
+            .await?;
+        Command::new("git")
+            .current_dir(&repo_path)
+            .args(["config", "user.name", "Test User"])
+            .output()
+            .await?;
+
+        // Commit 1
+        let file_path = repo_path.join("test.txt");
+        let mut file = File::create(&file_path)?;
+        writeln!(file, "Hello World")?;
+
+        Command::new("git")
+            .current_dir(&repo_path)
+            .args(["add", "."])
+            .output()
+            .await?;
+
+        Command::new("git")
+            .current_dir(&repo_path)
+            .args(["commit", "-m", "Initial commit"])
+            .output()
+            .await?;
+
+        // Test git_status
+        let status = git_status(&repo_path).await?;
+        assert!(status.contains("nothing to commit, working tree clean"));
+
+        // Create a branch
+        Command::new("git")
+            .current_dir(&repo_path)
+            .args(["branch", "feature"])
+            .output()
+            .await?;
+
+        // Test git_branch
+        let branches = git_branch(&repo_path).await?;
+        assert!(branches.contains("feature"));
+        assert!(branches.contains("master"));
+
+        // Test git_checkout
+        git_checkout(&repo_path, "feature").await?;
+        let branches_after = git_branch(&repo_path).await?;
+        assert!(branches_after.contains("* feature"));
+
+        // Create a tag
+        Command::new("git")
+            .current_dir(&repo_path)
+            .args(["tag", "v1.0"])
+            .output()
+            .await?;
+
+        // Test git_tag
+        let tags = git_tag(&repo_path).await?;
+        assert!(tags.contains("v1.0"));
+
+        Ok(())
+    }
 
     #[tokio::test]
     async fn test_git_log() -> Result<()> {
@@ -649,8 +797,6 @@ mod tests {
         Ok(())
     }
 
-
-
     #[tokio::test]
     async fn test_apply_patch_failure() -> Result<()> {
         let temp_dir = tempfile::tempdir()?;
@@ -662,6 +808,14 @@ mod tests {
             .args(["init"])
             .output()
             .await?;
+
+        // Ensure we are on master
+        let _ = Command::new("git")
+            .current_dir(&repo_path)
+            .args(["branch", "-m", "master"])
+            .output()
+            .await;
+
         Command::new("git")
             .current_dir(&repo_path)
             .args(["config", "user.email", "test@example.com"])

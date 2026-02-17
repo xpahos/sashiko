@@ -127,6 +127,41 @@ impl ToolBox {
                 }),
             },
             AiTool {
+                name: "git_status".to_string(),
+                description: "Show the working tree status.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {},
+                }),
+            },
+            AiTool {
+                name: "git_checkout".to_string(),
+                description: "Switch branches or restore working tree files.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "target": { "type": "string", "description": "The branch or commit to checkout." }
+                    },
+                    "required": ["target"]
+                }),
+            },
+            AiTool {
+                name: "git_branch".to_string(),
+                description: "List both remote-tracking branches and local branches.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {},
+                }),
+            },
+            AiTool {
+                name: "git_tag".to_string(),
+                description: "List tags.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {},
+                }),
+            },
+            AiTool {
                 name: "list_dir".to_string(),
                 description: "List files in a directory.".to_string(),
                 parameters: json!({
@@ -199,6 +234,10 @@ impl ToolBox {
             "git_blame" => self.git_blame(args).await,
             "git_diff" => self.git_diff(args).await,
             "git_show" => self.git_show(args).await,
+            "git_status" => self.git_status(args).await,
+            "git_checkout" => self.git_checkout(args).await,
+            "git_branch" => self.git_branch(args).await,
+            "git_tag" => self.git_tag(args).await,
             "list_dir" => self.list_dir(args).await,
             "search_file_content" => self.search_file_content(args).await,
             "find_files" => self.find_files(args).await,
@@ -431,6 +470,29 @@ impl ToolBox {
         }
 
         Ok(json!({ "content": self.truncate_output(content) }))
+    }
+
+    async fn git_status(&self, _args: Value) -> Result<Value> {
+        let content = crate::git_ops::git_status(&self.worktree_path).await?;
+        Ok(json!({ "content": content }))
+    }
+
+    async fn git_checkout(&self, args: Value) -> Result<Value> {
+        let target = args["target"]
+            .as_str()
+            .ok_or_else(|| anyhow!("Missing target"))?;
+        crate::git_ops::git_checkout(&self.worktree_path, target).await?;
+        Ok(json!({ "status": "success", "message": format!("Checked out {}", target) }))
+    }
+
+    async fn git_branch(&self, _args: Value) -> Result<Value> {
+        let content = crate::git_ops::git_branch(&self.worktree_path).await?;
+        Ok(json!({ "content": content }))
+    }
+
+    async fn git_tag(&self, _args: Value) -> Result<Value> {
+        let content = crate::git_ops::git_tag(&self.worktree_path).await?;
+        Ok(json!({ "content": content }))
     }
 
     async fn list_dir(&self, args: Value) -> Result<Value> {
@@ -695,6 +757,94 @@ mod tests {
         let todo_path = dir.path().join("TODO.md");
         let content = std::fs::read_to_string(todo_path)?;
         assert!(content.contains("- [ ] Normalization test"));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_git_tools() -> Result<()> {
+        let dir = tempdir()?;
+        let repo_path = dir.path().to_path_buf();
+        let toolbox = ToolBox::new(repo_path.clone(), None);
+
+        // Init repo
+        Command::new("git")
+            .current_dir(&repo_path)
+            .args(["init"])
+            .output()
+            .await?;
+
+        // Ensure we are on master
+        let _ = Command::new("git")
+            .current_dir(&repo_path)
+            .args(["branch", "-m", "master"])
+            .output()
+            .await;
+
+        Command::new("git")
+            .current_dir(&repo_path)
+            .args(["config", "user.email", "test@example.com"])
+            .output()
+            .await?;
+        Command::new("git")
+            .current_dir(&repo_path)
+            .args(["config", "user.name", "Test User"])
+            .output()
+            .await?;
+
+        // Create a file and commit
+        let file_path = repo_path.join("test.txt");
+        let mut file = File::create(&file_path)?;
+        writeln!(file, "Hello")?;
+
+        Command::new("git")
+            .current_dir(&repo_path)
+            .args(["add", "."])
+            .output()
+            .await?;
+        Command::new("git")
+            .current_dir(&repo_path)
+            .args(["commit", "-m", "Initial"])
+            .output()
+            .await?;
+
+        // Test git_status
+        let result = toolbox.call("git_status", json!({})).await?;
+        let content = result["content"].as_str().unwrap();
+        assert!(content.contains("nothing to commit"));
+
+        // Test git_branch
+        let result = toolbox.call("git_branch", json!({})).await?;
+        let content = result["content"].as_str().unwrap();
+        assert!(content.contains("master"));
+
+        // Create branch
+        Command::new("git")
+            .current_dir(&repo_path)
+            .args(["branch", "new-feature"])
+            .output()
+            .await?;
+
+        // Test git_checkout
+        toolbox
+            .call("git_checkout", json!({ "target": "new-feature" }))
+            .await?;
+
+        let result = toolbox.call("git_branch", json!({})).await?;
+        let content = result["content"].as_str().unwrap();
+        assert!(content.contains("* new-feature"));
+
+        // Create tag
+        Command::new("git")
+            .current_dir(&repo_path)
+            .args(["tag", "v1.0"])
+            .output()
+            .await?;
+
+        // Test git_tag
+        let result = toolbox.call("git_tag", json!({})).await?;
+        let content = result["content"].as_str().unwrap();
+        assert!(content.contains("v1.0"));
 
         Ok(())
     }
