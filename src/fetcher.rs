@@ -458,7 +458,7 @@ impl FetchAgent {
         };
 
         // Format: AuthorName%nAuthorEmail%nSubject%nBody...%n---SASHIKO-END-HEADER---%nDiff...
-        let format = "format:%an%n%ae%n%s%n%b%n---SASHIKO-END-HEADER---";
+        let format = "format:%an%n%ae%n%s%n%b%n---SASHIKO-END-HEADER---%n";
 
         let output = Command::new("git")
             .current_dir(&self.repo_path)

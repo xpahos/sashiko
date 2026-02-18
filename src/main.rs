@@ -654,7 +654,9 @@ async fn process_parsed_article(worker_db: &Database, article: ParsedArticle) ->
                 }
             }
             Ok(None) => {
-                warn!("Mailing list not found for group: {}", group);
+                if group != "git-fetch" {
+                    warn!("Mailing list not found for group: {}", group);
+                }
             }
             Err(e) => {
                 error!("Failed to resolve mailing list for group {}: {}", group, e);
