@@ -502,10 +502,7 @@
             color: #6a737d;
         }
 
-        .is-thought {
-            opacity: 0.6;
-            filter: grayscale(1);
-        }
+
 
         .fn-name {
             font-weight: bold;
@@ -1875,11 +1872,6 @@ ${escapeHtml(data.body || '(no body)', true, false)}</pre>
                     else if (role === 'model' || role === 'assistant') rowClass += ' role-model';
                     else if (role === 'tool' || role === 'function') rowClass += ' role-tool';
                     else rowClass += ' role-system';
-
-                    // Thoughts are all messages except the last one
-                    if (idx < logs.length - 1) {
-                        rowClass += ' is-thought';
-                    }
 
                     let label = (role === 'model' || role === 'assistant') ? 'LLM' : (role === 'tool' || role === 'function') ? 'TOOL' : role.toUpperCase();
 
