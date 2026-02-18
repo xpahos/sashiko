@@ -20,6 +20,7 @@ use crate::baseline::{BaselineRegistry, BaselineResolution, extract_files_from_d
 use crate::db::{AiInteractionParams, Database, Finding, PatchsetRow, Severity, ToolUsage};
 use crate::git_ops::{GitWorktree, ensure_remote, get_commit_hash};
 use crate::settings::Settings;
+use crate::utils::redact_secret;
 use anyhow::Result;
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -465,7 +466,7 @@ impl Reviewer {
             // Check remote
             if let BaselineResolution::RemoteTarget { url, name, .. } = candidate {
                 if let Err(e) = ensure_remote(&repo_path, name, url, false).await {
-                    let msg = format!("Failed to fetch remote {}: {}\n", url, e);
+                    let msg = format!("Failed to fetch remote {}: {}\n", redact_secret(url), e);
                     current_log.push_str(&msg);
                     error!("{}", msg.trim());
                     attempts.push(BaselineAttempt {

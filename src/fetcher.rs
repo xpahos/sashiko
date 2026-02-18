@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use crate::events::Event;
+use crate::utils::redact_secret;
 use anyhow::{Result, anyhow};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -335,7 +336,12 @@ impl FetchAgent {
             let current_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
             if current_url != url {
-                info!("Updating remote {} from {} to {}", name, current_url, url);
+                info!(
+                    "Updating remote {} from {} to {}",
+                    name,
+                    redact_secret(&current_url),
+                    redact_secret(url)
+                );
                 Command::new("git")
                     .current_dir(&self.repo_path)
                     .args(["remote", "set-url", name, url])
@@ -343,7 +349,7 @@ impl FetchAgent {
                     .await?;
             }
         } else {
-            info!("Adding remote {} -> {}", name, url);
+            info!("Adding remote {} -> {}", name, redact_secret(url));
             let output = Command::new("git")
                 .current_dir(&self.repo_path)
                 .args(["remote", "add", name, url])

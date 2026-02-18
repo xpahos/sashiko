@@ -25,6 +25,7 @@ pub mod nntp;
 pub mod patch;
 pub mod reviewer;
 pub mod settings;
+pub mod utils;
 pub mod worker;
 
 use std::fmt;

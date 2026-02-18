@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use anyhow::{Result, anyhow};
+use crate::utils::redact_secret;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -378,7 +379,7 @@ pub async fn ensure_remote(
             .await?;
 
         if !check.status.success() {
-            info!("Adding remote {} ({})", name, url);
+            info!("Adding remote {} ({})", name, redact_secret(url));
             let add = Command::new("git")
                 .current_dir(repo_path)
                 .args(["remote", "add", name, url])

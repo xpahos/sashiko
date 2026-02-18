@@ -301,7 +301,7 @@ impl Database {
     }
 
     pub async fn new(settings: &DatabaseSettings) -> Result<Self> {
-        info!("Connecting to database at {}", settings.url);
+        info!("Connecting to database at {}", crate::utils::redact_secret(&settings.url));
 
         let db = if settings.url.starts_with("libsql://") || settings.url.starts_with("https://") {
             Builder::new_remote(settings.url.clone(), settings.token.clone())
