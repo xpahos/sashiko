@@ -250,7 +250,7 @@ impl GitWorktree {
     }
 
     #[allow(dead_code)]
-    pub async fn remove(self) -> Result<()> {
+    pub async fn remove(mut self) -> Result<()> {
         if !self.is_managed {
             return Ok(());
         }
@@ -271,6 +271,7 @@ impl GitWorktree {
                 String::from_utf8_lossy(&output.stderr)
             ));
         }
+        self.is_managed = false;
         Ok(())
     }
 }
@@ -331,10 +332,12 @@ pub async fn check_disk_usage(path: &Path) -> Result<String> {
 
 impl Drop for GitWorktree {
     fn drop(&mut self) {
-        warn!(
-            "Dropping worktree at {:?}. Use explicit .remove() for clean git state.",
-            self.path
-        );
+        if self.is_managed {
+            warn!(
+                "Dropping worktree at {:?}. Use explicit .remove() for clean git state.",
+                self.path
+            );
+        }
     }
 }
 
