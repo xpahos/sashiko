@@ -1,44 +1,49 @@
 # Severity Levels
 
-When identifying issues, you must assign a severity level to each finding. Use the following definitions:
+When identifying issues, you must assign a severity level to each finding.
+Treat this task seriously, it's very important. Don't unnecessarily raise the priority,
+critical issues must be critical, high issues must be very damaging.
+Use Medium as default and lower/raise depending on the "Question to ask" answer and examples.
+Use the following definitions and examples:
 
 ## Critical
 - **Definition**: Issues that cause data loss, memory corruptions or security vulnerabilities.
-- **Action**: Must be fixed immediately. The patch cannot be merged.
+- **Question to ask**: Is it actually better for system to crash rather then keep working? If yes, it's a critical issue.
 - **Examples**:
-    - Security vulnerability (e.g., buffer overflow, use-after-free).
+    - Security vulnerability.
     - Data corruption.
+    - Memory corruption (e.g., buffer overflow, use-after-free).
+    - Kernel panic or oops which can be triggered externally.
     - ABI breakage without proper deprecation.
-	- Memory corruptions
-	- Kernel panic or oops which can be triggered externally.
 
 ## High
-- **Definition**: Serious issues that affect functionality and performance.
-- **Action**: Should be fixed before merging or fixed ASAP.
+- **Definition**: Serious issues that can bring the system down or make it fully unusable.
+- **Question to ask**: Can the system go down or become totally unusable with a non-trivial probability? If yes, it's a high issue.
 - **Examples**:
-    - Rare kernel panic or oops.
-    - Logic errors leading to incorrect behavior.
-    - Significant performance regression.
+    - Kernel panic or oops.
+    - Logic errors leading to incorrect functional behavior.
     - Resource leaks (memory, locks).
+    - Significant performance regression.
     - Violation of core kernel locking rules.
-    - Incorrect error handling.
 
 ## Medium
-- **Definition**: Issues that improve code quality, readability, or minor functional improvements.
-- **Action**: Recommended to be fixed. Can be addressed in a follow-up patch or v2.
+- **Definition**: Recoverable issues or non-critical performance regressions.
 - **Examples**:
-    - Build failures.
-    - Coding style violations (checkpatch warnings).
-    - Confusing variable naming or comments.
-    - Minor efficiency improvements.
-    - Unnecessary code complexity.
-    - Missing documentation for new APIs.
+    - Memory or resource leaks on cold paths.
+    - Inefficient locking.
+    - Incorrect statistics.
+    - Meaningful code and commit message mismatch.
+    - Non-critical performance regressions.
+	- Issues in kselftests, perf and other userspace applications.
 
 ## Low
-- **Definition**: Nitpicks, suggestions, or questions.
-- **Action**: Optional fixes.
+- **Definition**: Naming, style and coding style issues.
+- **Question to ask**: Is there any visible real life effect? If no, it's a low issue. Otherwise it's a medium issue.
 - **Examples**:
     - Typos in comments.
-    - Formatting suggestions (whitespace).
-    - Personal preference on code structure.
-    - Clarification questions.
+    - Formatting issues.
+    - Potential build failures.
+    - Confusing variable naming or comments.
+    - Negligible performance regressions.
+    - Unnecessary code complexity.
+    - Missing documentation or comments.
