@@ -35,6 +35,7 @@ use tracing::{error, info, warn};
 
 #[derive(Clone)]
 struct ReviewContext {
+    semaphore: Arc<Semaphore>,
     db: Arc<Database>,
     settings: Settings,
     baseline_registry: Arc<BaselineRegistry>,
@@ -234,6 +235,7 @@ impl Reviewer {
             let target_review_count = patchset.target_review_count.unwrap_or(1) as usize;
 
             let context = ReviewContext {
+                semaphore: self.semaphore.clone(),
                 db: self.db.clone(),
                 settings: self.settings.clone(),
                 baseline_registry: self.baseline_registry.clone(),
@@ -424,9 +426,18 @@ impl Reviewer {
             let skip_regexes: Vec<_> = skip_filters.iter().map(|f| compile_glob(f)).collect();
             let only_regexes: Vec<_> = only_filters.iter().map(|f| compile_glob(f)).collect();
 
+            struct ValidJob {
+                patch_id: i64,
+                index: i64,
+                commit_sha: Option<String>,
+                diff: String,
+            }
+
             // 2. Run Reviews
             let mut review_success = true; // Optimistic
             let mut failed_patches = 0;
+
+            let mut valid_jobs = Vec::new();
 
             for (patch_id, index, diff, _subj, _auth, _date, _msg_id) in &diffs {
                 let mut should_skip = false;
@@ -479,7 +490,6 @@ impl Reviewer {
                     continue;
                 }
                 let commit_sha = patch_commits.get(index).cloned();
-                let baseline_ref = resolution.as_str();
 
                 if let Some(sha) = &commit_sha {
                     if let Ok(true) = worktree.is_merge_commit(sha).await {
@@ -500,27 +510,117 @@ impl Reviewer {
                     }
                 }
 
-                match Self::process_patch_review(
-                    &ctx,
-                    patchset_id,
-                    *patch_id,
-                    *index,
-                    &baseline_ref,
-                    Some(baseline_id),
-                    &input_payload,
+                valid_jobs.push(ValidJob {
+                    patch_id: *patch_id,
+                    index: *index,
                     commit_sha,
-                    prompts_hash.as_deref(),
-                    Some(&worktree.path),
-                    diff,
-                )
-                .await
-                {
-                    Ok(PatchResult::Success) => {}
-                    _ => {
-                        review_success = false;
-                        failed_patches += 1;
+                    diff: diff.to_string(),
+                });
+            }
+
+            // Reverse so that pop() processes in the original order (index 1 first)
+            valid_jobs.reverse();
+            let total_valid = valid_jobs.len();
+            let valid_jobs_queue = Arc::new(tokio::sync::Mutex::new(valid_jobs));
+            let mut handles = Vec::new();
+            let baseline_ref_str = resolution.as_str();
+
+            // If diffs length is >= 10, try concurrent processing using extra permits
+            if diffs.len() >= 10 && total_valid > 1 {
+                while let Ok(permit) = ctx.semaphore.clone().try_acquire_owned() {
+                    let queue = valid_jobs_queue.clone();
+                    let ctx_clone = ctx.clone();
+                    let input_payload_clone = input_payload.clone();
+                    let prompts_hash_clone = prompts_hash.clone().map(|s| s.to_string());
+                    let baseline_ref_clone = baseline_ref_str.to_string();
+                    let baseline_id_clone = baseline_id;
+
+                    let handle = tokio::spawn(async move {
+                        let mut failed = 0;
+                        loop {
+                            let job = {
+                                let mut q = queue.lock().await;
+                                q.pop()
+                            };
+                            if let Some(job) = job {
+                                match Self::process_patch_review(
+                                    &ctx_clone,
+                                    patchset_id,
+                                    job.patch_id,
+                                    job.index,
+                                    &baseline_ref_clone,
+                                    Some(baseline_id_clone),
+                                    &input_payload_clone,
+                                    job.commit_sha,
+                                    prompts_hash_clone.as_deref(),
+                                    None, // Worker creates its OWN worktree!
+                                    &job.diff,
+                                )
+                                .await
+                                {
+                                    Ok(PatchResult::Success) => {}
+                                    _ => failed += 1,
+                                }
+                            } else {
+                                break;
+                            }
+                        }
+                        drop(permit);
+                        failed
+                    });
+                    handles.push(handle);
+
+                    // Don't spawn more workers than remaining jobs
+                    let remaining = {
+                        let q = valid_jobs_queue.lock().await;
+                        q.len()
+                    };
+                    if remaining <= handles.len() {
+                        break;
                     }
                 }
+            }
+
+            // Main worker loop uses the existing worktree
+            let mut main_failed = 0;
+            loop {
+                let job = {
+                    let mut q = valid_jobs_queue.lock().await;
+                    q.pop()
+                };
+                if let Some(job) = job {
+                    match Self::process_patch_review(
+                        &ctx,
+                        patchset_id,
+                        job.patch_id,
+                        job.index,
+                        &baseline_ref_str,
+                        Some(baseline_id),
+                        &input_payload,
+                        job.commit_sha,
+                        prompts_hash.as_deref(),
+                        Some(&worktree.path),
+                        &job.diff,
+                    )
+                    .await
+                    {
+                        Ok(PatchResult::Success) => {}
+                        _ => main_failed += 1,
+                    }
+                } else {
+                    break;
+                }
+            }
+            failed_patches += main_failed;
+
+            for handle in handles {
+                if let Ok(failed) = handle.await {
+                    failed_patches += failed;
+                }
+            }
+
+            if failed_patches > 0 {
+                review_success = false;
             }
 
             // Cleanup worktree here since we kept it alive for reuse
@@ -2056,6 +2156,7 @@ echo '{"patchset_id": 1, "patches": []}'
         let active_cache_name = Arc::new(Mutex::new(None));
 
         let ctx = ReviewContext {
+            semaphore: Arc::new(Semaphore::new(1)),
             db: db.clone(),
             settings: settings.clone(),
             baseline_registry: Arc::new(BaselineRegistry::new(Path::new(".")).unwrap()),
