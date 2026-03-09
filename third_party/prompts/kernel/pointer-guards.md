@@ -134,6 +134,4 @@ For each guard in numbered order, determine coupling:
 
 ## Step 3: Final Validation
 
-Only report if you have concrete code evidence that ALL guards are decoupled.
-If the guard is likely sufficient, assume the author is preventing NULL
-dereference correctly.
+If you find strong evidence that a guard is insufficient or missing, and the pointer can genuinely be NULL in this context, report it.

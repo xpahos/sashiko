@@ -53,10 +53,6 @@ must complete task POSITIVE.1 before completing the false positive check.
 
 ### 3. Unverifiable Assumptions
 **Assume the author is wrong** and require proof they are correct
-- Look for the author in the MAINTAINERS file, if found, assume their comments,
-  commit messages and assertions in the patch's modified code are correct.
-  Comments and documentation in existing unmodified code must still be verified
-  against the actual implementation per section 3.1.
 - Untrusted sources (network/user) always need concrete proof of correctness
 - Research assumptions and claims in commit messages, comments and code, prove them correct
 - If the author makes claims without code evidence, treat them as unverified
@@ -178,6 +174,8 @@ the dismissal is invalid. Report the race.
 - Commit message explains the performance impact
 - Simplicity/maintainability was prioritized
 - It's optimizing for a different use case
+
+**ONLY REPORT**: if the performance degradation is significant and clearly unintentional.
 
 ### 10. Intentional backwards compatibility
 - Leaving stub sysfs or procfs files is not required, and also not a regression
@@ -387,7 +385,7 @@ Before reporting ANY regression, verify:
        callstack.md "Reachability Dismissals".
    - 10.2 Now pretend you're the reviewer. Think extremely hard about the author's arguments and decide if the review is correct.
      - Address each author argument with code evidence
-     - Output: code evidence refuting the author, or "cannot refute with code - likely false positive"
+     - Output: code evidence or strong logical reasoning refuting the author, or "cannot refute - likely false positive"
 
 ### Mandatory Validation
 
@@ -437,7 +435,7 @@ Before adding to report, think about the regression and ask:
     definitely enter that state.
 2. **Would an expert see this as a real issue?** [ yes / no ]
 3. **Is this worth the maintainer's time?** [ yes / no ]
-4. **Am I suggesting defensive programming, or reporting a concrete bug?** [ yes / no ]
+4. **Is this a genuine bug, not just a defensive programming preference?** [ yes / no ]
   - Defensive programming: "add a NULL check here for safety" → discard
   - Concrete bug: "this wait_event has no timeout and no fallback wake" → report
 
