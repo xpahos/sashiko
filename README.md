@@ -9,7 +9,7 @@ Sashiko is an agentic Linux kernel code review system. It uses a set Linux kerne
 ## Quality of reviews
 
 Sashiko is not perfect, but in our measurements the quality of reviews is high:
-in our tests sashiko was able to find 45.2% (with Gemini 3.1 Pro) of bugs based on unfiltered last 1000 upstream commits with Fixed: tags.
+in our tests sashiko was able to find 52.1% (with Gemini 3.1 Pro) of bugs based on unfiltered last 1000 upstream commits with Fixed: tags.
 In some sense, it's already above the human level given that 100% of these bugs made it through human-driven code reviews and were accepted to the main tree.
 The rate of false positives is harder to measure, but based on limited manual reviews it's well within 20% range and the majority of it is a gray zone.
 
@@ -24,7 +24,20 @@ Please, note that as with any other LLM-based tools, Sashiko's output is probabi
 
 ## Prompts
 
-Sashiko is based on the set of carefully crafted prompts to guide the AI in its reviews. These prompts were initially created by Chris Mason and are developed by the community of developers in a separate repository:
+Sashiko uses a multi-stage review protocol to evaluate patches thoroughly from multiple perspectives, mimicking a team of specialized reviewers.
+
+### Review Stages
+1.  **Stage 1: Analyze commit main goal.** Focuses on the big picture, architectural flaws, UAPI breakages, and conceptual correctness.
+2.  **Stage 2: High-level implementation verification.** Verifies if the code matches the commit message claims, checking for missing pieces, undocumented side-effects, and API contract violations.
+3.  **Stage 3: Execution flow verification.** Traces C code execution flow, checking for logic errors, missing return checks, unhandled error paths, and off-by-one errors.
+4.  **Stage 4: Resource management.** Analyzes memory leaks, use-after-free (UAF), double frees, and object lifecycles across queues, timers, and workqueues.
+5.  **Stage 5: Locking and synchronization.** Investigates concurrency issues, deadlocks, RCU rule violations, and thread-safety.
+6.  **Stage 6: Security audit.** Audits for buffer overflows, OOB reads/writes, TOCTOU races, and information leaks (like copying uninitialized memory).
+7.  **Stage 7: Hardware engineer's review.** Specifically reviews driver and hardware code for correct register accesses, DMA mapping, memory barriers, and state machine constraints.
+8.  **Stage 8: Verification and severity estimation.** Consolidates feedback from stages 1-7, deduplicates concerns, and attempts to logically prove/disprove findings to minimize false positives.
+9.  **Stage 9: Report generation.** Converts confirmed findings into a polite, standard, inline-commented LKML email reply.
+
+Also Sashiko is using per-subsystem and generic prompts, initially developed by Chris Mason:
 
 *   [**review-prompts**](https://github.com/masoncl/review-prompts)
 
