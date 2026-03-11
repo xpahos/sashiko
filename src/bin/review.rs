@@ -349,7 +349,8 @@ async fn main() -> Result<()> {
                     let patchset_val = json!({
                         "id": patchset_id,
                         "subject": subject,
-                        "patches": rich_patches
+                        "patches": rich_patches,
+                        "patch_index": args.review_patch_index
                     });
 
                     let mut review_result_to_print = None;

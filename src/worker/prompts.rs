@@ -361,6 +361,7 @@ pub struct Worker {
     max_interactions: usize,
     temperature: f32,
     series_range: Option<String>,
+    context_tag: Option<String>,
 }
 
 impl Worker {
@@ -378,12 +379,23 @@ impl Worker {
             max_interactions: config.max_interactions,
             temperature: config.temperature,
             series_range: config.series_range,
+            context_tag: None,
         }
     }
 
     pub async fn run(&mut self, patchset: Value) -> Result<WorkerResult> {
         // 1. Extract inputs
         let mut target_commit_diff = String::new();
+
+        let ps_id = patchset["id"]
+            .as_i64()
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        let p_id = patchset["patch_index"]
+            .as_i64()
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| "multi".to_string());
+        self.context_tag = Some(format!("[ps:{} p:{}] ", ps_id, p_id));
 
         if let Some(patches) = patchset["patches"].as_array() {
             for p in patches {
@@ -437,6 +449,9 @@ impl Worker {
                         temperature: Some(0.0),
                         response_format: Some(AiResponseFormat::Json {
                             schema: Some(schema),
+                        }),
+                        context_tag: self.context_tag.as_ref().map(|prefix| {
+                            format!("{}s:0] ", &prefix[..prefix.len() - 2])
                         }),
                     };
 
@@ -898,6 +913,9 @@ Example:
                 temperature: Some(self.temperature),
 
                 response_format: None,
+                context_tag: self.context_tag.as_ref().map(|prefix| {
+                    format!("{}s:{}] ", &prefix[..prefix.len() - 2], _stage)
+                }),
             };
 
             let resp = self.provider.generate_content(request).await?;

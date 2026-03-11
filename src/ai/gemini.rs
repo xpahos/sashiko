@@ -243,13 +243,17 @@ impl GeminiClient {
                     if let Some(usage) = &response.usage_metadata {
                         let cached = usage.cached_content_token_count.unwrap_or(0);
                         tracing::info!(
-                            "Gemini response received. Tokens: in={}, cached={}, out={}",
+                            "{}Gemini response received. Tokens: in={}, cached={}, out={}",
+                            crate::ai::get_log_prefix(),
                             usage.prompt_token_count.saturating_sub(cached),
                             cached,
                             usage.candidates_token_count.unwrap_or(0)
                         );
                     } else {
-                        tracing::info!("Gemini response received. No usage metadata.");
+                        tracing::info!(
+                            "{}Gemini response received. No usage metadata.",
+                            crate::ai::get_log_prefix()
+                        );
                     }
                     return Ok(response);
                 }
@@ -661,6 +665,7 @@ mod tests {
             tools: None,
             temperature: Some(0.7),
             response_format: None,
+            context_tag: None,
         };
 
         let gemini_req = translate_ai_request(request)?;
@@ -706,6 +711,7 @@ mod tests {
             tools: None,
             temperature: None,
             response_format: None,
+            context_tag: None,
         };
 
         let gemini_req = translate_ai_request(request)?;
@@ -788,6 +794,7 @@ mod tests {
             tools: None,
             temperature: None,
             response_format: None,
+            context_tag: None,
         };
 
         let gemini_req = translate_ai_request(request)?;
@@ -826,6 +833,7 @@ mod tests {
             response_format: Some(AiResponseFormat::Json {
                 schema: Some(schema.clone()),
             }),
+            context_tag: None,
         };
 
         let gemini_req = translate_ai_request(request)?;
@@ -879,6 +887,7 @@ mod tests {
             }]),
             temperature: None,
             response_format: None,
+            context_tag: None,
         };
 
         let gemini_req = translate_ai_request(request)?;
@@ -939,6 +948,7 @@ mod tests {
             }]),
             temperature: None,
             response_format: None,
+            context_tag: None,
         };
 
         let tokens = estimate_tokens_generic(&request);

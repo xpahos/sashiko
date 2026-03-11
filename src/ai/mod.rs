@@ -108,6 +108,17 @@ pub struct AiRequest {
     /// Optional expected response format.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_format: Option<AiResponseFormat>,
+    /// Optional context tag for logging (e.g., [ps:123 p:1 s:4])
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_tag: Option<String>,
+}
+
+tokio::task_local! {
+    pub static LOG_CONTEXT: String;
+}
+
+pub fn get_log_prefix() -> String {
+    LOG_CONTEXT.try_with(|c| c.clone()).unwrap_or_default()
 }
 
 /// A generic AI response containing generated content and/or tool calls.
@@ -209,6 +220,7 @@ mod tests {
             tools: None,
             temperature: Some(0.5),
             response_format: Some(AiResponseFormat::Text),
+            context_tag: None,
         };
 
         // This matches the format used in StdioGeminiClient and expected by the Worker

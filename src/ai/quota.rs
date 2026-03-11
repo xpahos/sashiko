@@ -53,7 +53,8 @@ impl QuotaManager {
 
             if let Some(duration) = sleep_duration {
                 info!(
-                    "Global AI rate limit/quota active. Waiting for {:.2}s...",
+                    "{}Global AI rate limit/quota active. Waiting for {:.2}s...",
+                    crate::ai::get_log_prefix(),
                     duration.as_secs_f64()
                 );
                 tokio::time::sleep(duration).await;
