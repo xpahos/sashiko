@@ -132,11 +132,11 @@ impl ToolBox {
             },
             AiTool {
                 name: "git_log".to_string(),
-                description: "Show commit logs.".to_string(),
+                description: "Show commit logs. IMPORTANT: When using expensive search flags like -S or -G, you MUST limit the search range using --since (e.g., '--since=1.year.ago') or specific commit ranges to avoid timeouts on large repositories.".to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
-                        "args": { "type": "array", "items": { "type": "string" }, "description": "Arguments for git log (e.g., ['-n', '3', '--oneline']). Bounded to 100 commits by default unless overridden." }
+                        "args": { "type": "array", "items": { "type": "string" }, "description": "Arguments for git log (e.g., ['-n', '3', '--oneline']). Bounded to 100 commits by default unless overridden. For -S/-G searches, always include a time limit like '--since=1.year.ago'." }
                     },
                 }),
             },
@@ -441,13 +441,25 @@ impl ToolBox {
             .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
             .unwrap_or_default();
 
-        let output = Command::new("git")
-            .current_dir(&self.worktree_path)
+        let mut cmd = Command::new("git");
+        cmd.current_dir(&self.worktree_path)
             .arg("log")
             .args(["-n", "100"])
             .args(&log_args_str)
-            .output()
-            .await?;
+            .kill_on_drop(true);
+
+        let output_result =
+            tokio::time::timeout(std::time::Duration::from_secs(120), cmd.output()).await;
+
+        let output = match output_result {
+            Ok(Ok(out)) => out,
+            Ok(Err(e)) => return Err(e.into()),
+            Err(_) => {
+                return Ok(
+                    json!({ "error": "git log command timed out after 120 seconds. Please avoid using extremely slow search flags like -S or -G on large repositories." }),
+                );
+            }
+        };
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
