@@ -187,15 +187,59 @@ pub fn create_provider(settings: &Settings) -> Result<Arc<dyn AiProvider>> {
                 .claude
                 .as_ref()
                 .map(|c| c.prompt_caching)
-                .unwrap_or(true); // Default to enabled
+                .unwrap_or(true);
             Ok(Arc::new(claude::ClaudeClient::new(model, enable_caching)))
         }
         "stdio-claude" => Ok(Arc::new(claude::StdioClaudeClient)),
+        "openai" | "openai-compatible" => {
+            let provider_type = match settings.ai.provider.to_lowercase().as_str() {
+                "openai" => openai::OpenAiProviderType::OpenAi,
+                _ => openai::OpenAiProviderType::OpenAiCompatible,
+            };
+
+            let base_url = settings
+                .ai
+                .openai_compat
+                .as_ref()
+                .and_then(|c| c.base_url.clone())
+                .unwrap_or_else(|| {
+                    openai::OpenAiCompatClient::default_base_url_for_model(
+                        &settings.ai.model,
+                    )
+                });
+
+            let context_window = settings
+                .ai
+                .openai_compat
+                .as_ref()
+                .and_then(|c| c.context_window_size)
+                .unwrap_or_else(|| {
+                    openai::OpenAiCompatClient::default_context_window_for_model(
+                        &settings.ai.model,
+                    )
+                });
+
+            let max_tokens = settings
+                .ai
+                .openai_compat
+                .as_ref()
+                .and_then(|c| c.max_tokens)
+                .unwrap_or(4096);
+
+            Ok(Arc::new(openai::OpenAiCompatClient::new(
+                base_url,
+                provider_type,
+                settings.ai.model.clone(),
+                context_window,
+                max_tokens,
+            )))
+        }
         p => bail!("Unsupported AI provider: {}", p),
     }
 }
 pub mod claude;
 pub mod gemini;
+pub mod openai;
 pub mod proxy;
 pub mod quota;
 pub mod token_budget;
@@ -288,15 +332,32 @@ mod tests {
     #[test]
     fn test_create_provider() -> Result<()> {
         let mut settings = Settings::new().expect("Failed to load settings");
+
         settings.ai.provider = "gemini".to_string();
         settings.ai.model = "gemini-1.5-flash".to_string();
-
         let provider = create_provider(&settings)?;
         assert_eq!(provider.get_capabilities().model_name, "gemini-1.5-flash");
 
         settings.ai.provider = "stdio-gemini".to_string();
         let provider = create_provider(&settings)?;
         assert_eq!(provider.get_capabilities().model_name, "stdio-gemini");
+
+        settings.ai.provider = "claude".to_string();
+        settings.ai.model = "claude-sonnet-4-20250514".to_string();
+        let provider = create_provider(&settings)?;
+        assert_eq!(
+            provider.get_capabilities().model_name,
+            "claude-sonnet-4-20250514"
+        );
+
+        settings.ai.provider = "stdio-claude".to_string();
+        let provider = create_provider(&settings)?;
+        assert_eq!(provider.get_capabilities().model_name, "stdio-claude");
+
+        settings.ai.provider = "openai".to_string();
+        settings.ai.model = "gpt-4o".to_string();
+        let provider = create_provider(&settings)?;
+        assert_eq!(provider.get_capabilities().model_name, "gpt-4o");
 
         settings.ai.provider = "unknown".to_string();
         let result = create_provider(&settings);

@@ -115,6 +115,17 @@ fn default_prompt_caching() -> bool {
 
 #[derive(Debug, Deserialize, Clone)]
 #[allow(unused)]
+pub struct OpenAiCompatSettings {
+    #[serde(default)]
+    pub base_url: Option<String>,
+    #[serde(default)]
+    pub context_window_size: Option<usize>,
+    #[serde(default)]
+    pub max_tokens: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[allow(unused)]
 pub struct AiSettings {
     pub provider: String,
     pub model: String,
@@ -129,6 +140,7 @@ pub struct AiSettings {
     // Provider-specific settings
     pub claude: Option<ClaudeSettings>,
     pub gemini: Option<GeminiSettings>,
+    pub openai_compat: Option<OpenAiCompatSettings>,
 }
 
 fn default_temperature() -> f32 {
